@@ -1,0 +1,2 @@
+1. Bitboard repr
+2. Move generator
