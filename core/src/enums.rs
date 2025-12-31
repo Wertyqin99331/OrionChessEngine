@@ -1,9 +1,50 @@
 use std::fmt;
 
+#[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum Color {
+pub enum Side {
     White,
     Black,
+}
+
+impl Side {
+    #[inline]
+    pub const fn index(self) -> u8 {
+        self as u8
+    }
+
+    #[inline]
+    pub const fn opposite(self) -> Side {
+        match self {
+            Self::White => Side::Black,
+            Self::Black => Side::White,
+        }
+    }
+
+    #[inline]
+    pub const unsafe fn from_u8_unchecked(v: u8) -> Side {
+        unsafe { std::mem::transmute(v) }
+    }
+}
+
+impl Into<u8> for Side {
+    fn into(self) -> u8 {
+        self as u8
+    }
+}
+
+impl TryFrom<u8> for Side {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value == 0 {
+            Ok(Side::White)
+        } else if value == 1 {
+            Ok(Side::Black)
+        } else {
+            Err(())
+        }
+    }
 }
 
 #[repr(u8)]
@@ -71,6 +112,52 @@ impl fmt::Display for Square {
         let file = (b'a' + (idx % 8)) as char;
         let rank = (idx / 8) + 1;
         write!(f, "{file}{rank}")
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone)]
+#[rustfmt::skip]
+pub enum File { A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7 }
+
+impl File {
+    pub const fn index(self) -> u8 {
+        self as u8
+    }
+}
+
+impl TryFrom<u8> for File {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value < 8 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(())
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone)]
+#[rustfmt::skip]
+pub enum Rank { R1=0, R2=1, R3=2, R4=3, R5=4, R6=5, R7=6, R8=7 }
+
+impl Rank {
+    pub const fn index(self) -> u8 {
+        self as u8
+    }
+}
+
+impl TryFrom<u8> for Rank {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value < 8 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(())
+        }
     }
 }
 

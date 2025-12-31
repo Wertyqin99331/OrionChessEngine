@@ -1,4 +1,7 @@
-use crate::enums::Square;
+use crate::{
+    chess_consts::{self, CHESSBOARD_SIZE},
+    enums::{File, Rank, Square},
+};
 
 /// Prints the bitboard to stdout
 #[cfg(debug_assertions)]
@@ -10,37 +13,37 @@ pub fn print_bitboard(bitboard: u64) {
             }
 
             let square = rank * 8 + file;
-            let piece = if get_bit(bitboard, Square::try_from(square).unwrap()) != 0 {
+            let piece = if is_bit_set(bitboard, Square::try_from(square).unwrap()) {
                 '1'
             } else {
                 '0'
             };
-            print!(" {piece} ");
+            print!("{piece} ");
         }
 
         println!();
     }
 
-    println!("\n     a  b  c  d  e  f  g  h");
-    println!("\n     Integer value: {bitboard}, hex value: {bitboard:#018x}")
+    println!("    a b c d e f g h");
+    println!("\n    Integer value: {bitboard}, hex value: {bitboard:#018x}")
 }
 
-/// Returns a bit from the bitboard by the square numbers
+/// Shows whether a bit at some certain place is set in the bitboard
 /// # Arguments
 /// bitboard - the bitboard to get a bit from
-/// square [0; 64) - the square to get a bit by
+/// square [0; 64) - the square to check
 /// # Examples
-/// 00001000 3 -> 8, the fourth bit is set, so return it
-/// 00001000 4 -> 0, the fifth bit is unset, so 0
-pub fn get_bit(bb: u64, square: Square) -> u64 {
-    bb & (1u64 << square.index())
+/// 00001000 3 -> true, the fourth bit is set, so return true
+/// 00001000 4 -> false, the fifth bit is unset, so return false
+pub const fn is_bit_set(bb: u64, square: Square) -> bool {
+    bb & (1u64 << square.index()) != 0
 }
 
 /// Set a certain bit to 1 on the bitboard
 /// # Examples
 /// 00000000 0 -> 00000001
 /// 10000000 1 -> 10000010
-pub fn set_bit(bb: u64, square: Square) -> u64 {
+pub const fn set_bit(bb: u64, square: Square) -> u64 {
     bb | (1u64 << square.index())
 }
 
@@ -49,7 +52,7 @@ pub fn set_bit(bb: u64, square: Square) -> u64 {
 /// 00000001 0 -> 00000000
 /// If the bit is not set, does nothing
 /// 00010000 0 -> 00010000
-pub fn pop_bit(bb: u64, square: Square) -> u64 {
+pub const fn pop_bit(bb: u64, square: Square) -> u64 {
     let sq = square.index();
     bb & !(1u64 << sq)
 }
@@ -58,8 +61,40 @@ pub fn pop_bit(bb: u64, square: Square) -> u64 {
 /// # Examples
 /// 00001000 3 -> 00000000
 /// 00000000 1 -> 00000010
-pub fn flip_bit(bb: u64, square: Square) -> u64 {
+pub const fn flip_bit(bb: u64, square: Square) -> u64 {
     bb ^ (1u64 << square.index())
+}
+
+/// Returns a bitboard with only certain rank bits set
+/// # Examples
+/// 7 11111111
+///   00000000
+///   ........
+pub const fn rank_mask(rank: Rank) -> u64 {
+    let mut bb = 0u64;
+    let mut f = 0;
+
+    while f < chess_consts::CHESSBOARD_SIZE as u8 {
+        bb |= 1u64 << (rank.index() * CHESSBOARD_SIZE as u8 + f);
+        f += 1;
+    }
+
+    bb
+}
+
+/// Returns a bitboard with only certain file bits set
+/// # Examples
+/// 0 10000000
+///   10000000
+///   .......
+pub const fn file_mask(file: File) -> u64 {
+    let mut bb = 0u64;
+    let mut r = 0;
+    while r < chess_consts::CHESSBOARD_SIZE as u8 {
+        bb |= 1u64 << (r * chess_consts::CHESSBOARD_SIZE as u8 + file.index());
+        r += 1;
+    }
+    bb
 }
 
 #[cfg(test)]
@@ -84,19 +119,19 @@ mod tests {
     #[test]
     fn get_bit_tests() {
         let a1_bitboard = Square::A1.bit();
-        assert!(get_bit(a1_bitboard, Square::A1) != 0);
-        assert!(get_bit(a1_bitboard, Square::A2) == 0);
+        assert_eq!(is_bit_set(a1_bitboard, Square::A1), true);
+        assert_eq!(is_bit_set(a1_bitboard, Square::A2), false);
 
         let a2_bitboard = Square::A2.bit();
-        assert!(get_bit(a2_bitboard, Square::A1) == 0);
-        assert!(get_bit(a2_bitboard, Square::A2) != 0);
+        assert_eq!(is_bit_set(a2_bitboard, Square::A1), false);
+        assert_eq!(is_bit_set(a2_bitboard, Square::A2), true);
     }
 
     #[test]
     fn set_bit_tests() {
         let zero_bb = 0;
 
-        assert!(set_bit(zero_bb, Square::A1) == 1);
+        assert!(set_bit(zero_bb, Square::A1) == Square::A1.bit());
         assert!(set_bit(zero_bb, Square::E4) == Square::E4.bit());
 
         assert!(set_bit(Square::E1.bit(), Square::F1) == Square::E1.bit() | Square::F1.bit());
