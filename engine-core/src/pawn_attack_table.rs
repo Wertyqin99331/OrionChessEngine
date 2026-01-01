@@ -5,7 +5,8 @@ use crate::{
 };
 
 const PAWN_ATTACKS_TABLE: [[u64; chess_consts::SQUARES_COUNT]; chess_consts::SIDES_COUNT] = {
-    let mut table = [[0u64; chess_consts::SQUARES_COUNT]; chess_consts::SIDES_COUNT];
+    let mut table =
+        [[chess_consts::EMPTY_BB; chess_consts::SQUARES_COUNT]; chess_consts::SIDES_COUNT];
 
     let mut sq = 0;
 
@@ -29,7 +30,7 @@ pub const fn get_pawn_attacks_mask(side: Side, square: Square) -> u64 {
 
 /// Get a pawn attack bb based on its position and side
 const fn generate_pawn_attacks_mask(square: Square, side: Side) -> u64 {
-    let bb = helpers::set_bit(0, square);
+    let bb = helpers::set_bit(chess_consts::EMPTY_BB, square);
 
     match side {
         Side::White => {

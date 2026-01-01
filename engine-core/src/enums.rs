@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::chess_consts;
+
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Side {
@@ -85,6 +87,14 @@ impl Square {
     #[inline]
     pub const unsafe fn from_u8_unchecked(v: u8) -> Square {
         unsafe { std::mem::transmute(v) }
+    }
+
+    pub(crate) fn all() -> impl Iterator<Item = Square> {
+        Square::range(Square::A1, Square::H8)
+    }
+
+    pub(crate) fn range(from: Square, to: Square) -> impl Iterator<Item = Square> {
+        (from.index()..=to.index()).map(|v| unsafe { Square::from_u8_unchecked(v) })
     }
 }
 

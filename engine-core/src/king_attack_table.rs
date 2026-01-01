@@ -1,7 +1,7 @@
 use crate::{chess_consts, enums::Square, helpers};
 
 const KING_ATTACKS_TABLE: [u64; chess_consts::SQUARES_COUNT] = {
-    let mut table = [0; chess_consts::SQUARES_COUNT];
+    let mut table = [chess_consts::EMPTY_BB; chess_consts::SQUARES_COUNT];
 
     let mut sq = 0;
 
@@ -20,8 +20,8 @@ pub const fn get_king_attacks_mask(square: Square) -> u64 {
 }
 
 const fn generate_king_attacks_mask(square: Square) -> u64 {
-    let bb = helpers::set_bit(0u64, square);
-    let mut attack_bb = 0u64;
+    let bb = helpers::set_bit(chess_consts::EMPTY_BB, square);
+    let mut attack_bb = chess_consts::EMPTY_BB;
 
     // Up-right
     attack_bb |= (bb & chess_consts::NOT_EIGHTH_RANK_BB & chess_consts::NOT_H_FILE_BB) << 9;
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_king_attacks_table() {
-        for sq in 0..chess_consts::SQUARES_COUNT as u8 {
+        for sq in Square::all() {
             let sq = Square::try_from(sq).unwrap();
 
             println!("{sq}");

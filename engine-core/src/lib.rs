@@ -4,3 +4,4 @@ mod helpers;
 mod king_attack_table;
 mod knight_attack_table;
 mod pawn_attack_table;
+mod sliding_piece_attack_table;

@@ -1,5 +1,5 @@
 use crate::{
-    chess_consts::{self, CHESSBOARD_SIZE},
+    chess_consts::{self, BOARD_SIZE},
     enums::{File, Rank, Square},
 };
 
@@ -74,8 +74,8 @@ pub const fn rank_mask(rank: Rank) -> u64 {
     let mut bb = 0u64;
     let mut f = 0;
 
-    while f < chess_consts::CHESSBOARD_SIZE as u8 {
-        bb |= 1u64 << (rank.index() * CHESSBOARD_SIZE as u8 + f);
+    while f < chess_consts::BOARD_SIZE as u8 {
+        bb |= 1u64 << (rank.index() * BOARD_SIZE as u8 + f);
         f += 1;
     }
 
@@ -90,11 +90,16 @@ pub const fn rank_mask(rank: Rank) -> u64 {
 pub const fn file_mask(file: File) -> u64 {
     let mut bb = 0u64;
     let mut r = 0;
-    while r < chess_consts::CHESSBOARD_SIZE as u8 {
-        bb |= 1u64 << (r * chess_consts::CHESSBOARD_SIZE as u8 + file.index());
+    while r < chess_consts::BOARD_SIZE as u8 {
+        bb |= 1u64 << (r * chess_consts::BOARD_SIZE as u8 + file.index());
         r += 1;
     }
     bb
+}
+
+/// Returns a mask with only this (rank, file) bit set
+pub const fn square_mask(rank: u8, file: u8) -> u64 {
+    1u64 << (rank * chess_consts::BOARD_SIZE as u8 + file)
 }
 
 #[cfg(test)]
