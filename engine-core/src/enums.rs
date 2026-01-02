@@ -171,6 +171,11 @@ impl TryFrom<u8> for Rank {
     }
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy)]
+#[rustfmt::skip]
+pub enum Piece {Pawn, Knight, Bishop, Rook, Queen, King}
+
 #[cfg(test)]
 mod tests {
     use super::*;

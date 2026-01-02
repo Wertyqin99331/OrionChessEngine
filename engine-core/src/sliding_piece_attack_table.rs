@@ -1,4 +1,11 @@
-use crate::{chess_consts, enums::Square, helpers};
+use std::sync::LazyLock;
+
+use crate::{
+    chess_consts,
+    enums::{Piece, Square},
+    helpers,
+    random_generator::XorShift64Star,
+};
 
 const BISHOP_RELEVANT_OCCUPANCY_MASKS: [u64; chess_consts::SQUARES_COUNT] = {
     let mut relevant_masks = [0u64; chess_consts::SQUARES_COUNT];
@@ -22,10 +29,7 @@ const BISHOP_RELEVANT_BIT_COUNTS: [u8; chess_consts::SQUARES_COUNT] = {
     let mut sq = 0;
 
     while sq < chess_consts::SQUARES_COUNT {
-        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
-
-        let relevant_occupancy_mask = generate_relevant_bishop_occupancy_mask(square);
-        counts[sq] = relevant_occupancy_mask.count_ones() as u8;
+        counts[sq] = BISHOP_RELEVANT_OCCUPANCY_MASKS[sq].count_ones() as u8;
 
         sq += 1;
     }
@@ -55,11 +59,7 @@ const ROOK_RELEVANT_BIT_COUNT: [u8; chess_consts::SQUARES_COUNT] = {
     let mut sq = 0;
 
     while sq < chess_consts::SQUARES_COUNT {
-        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
-
-        let relevant_occupancy_mask = generate_relevant_rook_occupancy_mask(square);
-
-        counts[sq] = relevant_occupancy_mask.count_ones() as u8;
+        counts[sq] = ROOK_RELEVANT_OCCUPANCY_MASKS[sq].count_ones() as u8;
 
         sq += 1;
     }
@@ -319,8 +319,124 @@ pub(crate) const fn build_blocker_mask(index: u32, mut relevant_mask: u64) -> u6
     blocker
 }
 
+const fn find_magic_number(square: Square, piece: Piece) -> Option<u64> {
+    match piece {
+        Piece::Bishop | Piece::Rook => {}
+        _ => panic!("find_magic_number function works only with bishop or rook piece types"),
+    }
+
+    let mut occupancies = [0u64; 4096];
+    let mut attacks = [0u64; 4096];
+    let mut used_attacks;
+
+    let relevant_occupancy_mask = match piece {
+        Piece::Bishop => generate_relevant_bishop_occupancy_mask(square),
+        Piece::Rook => generate_relevant_rook_occupancy_mask(square),
+        _ => unreachable!(),
+    };
+
+    let relevant_bits_count = relevant_occupancy_mask.count_ones();
+    let occupancy_indicies = 2u64.pow(relevant_bits_count);
+
+    let mut index = 0;
+    while index < occupancy_indicies as usize {
+        occupancies[index] = build_blocker_mask(index as u32, relevant_occupancy_mask);
+
+        attacks[index] = match piece {
+            Piece::Bishop => generate_bishop_attacks_mask(square, occupancies[index]),
+            Piece::Rook => generate_rook_attacks_mask(square, occupancies[index]),
+            _ => unreachable!(),
+        };
+
+        index += 1;
+    }
+
+    let mut rng_generator = XorShift64Star::new();
+    let mut random_index = 0;
+    while random_index < 100_000_000 {
+        random_index += 1;
+        let magic_number = rng_generator.generate_magic_number_candidate();
+
+        // Check that first 8 bits contain at least MIN_HIGH_BITS_SET to remove "mostly-zero" magics
+        const HIGH_8_BITS_MASK: u64 = 0xFF00_0000_0000_0000;
+        const MIN_HIGH_BITS_SET: u32 = 6;
+
+        let mixed = relevant_occupancy_mask.wrapping_mul(magic_number);
+        let high_bits = (mixed & HIGH_8_BITS_MASK).count_ones();
+
+        if high_bits < MIN_HIGH_BITS_SET {
+            continue;
+        }
+
+        used_attacks = [0u64; 4096];
+        let mut index = 0usize;
+
+        let mut fail = false;
+        while index < occupancy_indicies as usize {
+            let shift = 64 - relevant_bits_count;
+            let magic_index = occupancies[index].wrapping_mul(magic_number) >> shift;
+
+            // If no occupancy has landed here, ok
+            if used_attacks[magic_index as usize] == 0 {
+                used_attacks[magic_index as usize] = attacks[index];
+            } else if used_attacks[magic_index as usize] == attacks[index] {
+                // If occupancy with the same attack table has landed here, it is ok too
+            } else {
+                fail = true;
+                break;
+            }
+
+            index += 1;
+        }
+
+        if !fail {
+            return Some(magic_number);
+        }
+    }
+
+    None
+}
+
+static BISHOP_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
+    let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
+
+    let mut sq = 0;
+
+    while sq < chess_consts::SQUARES_COUNT {
+        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
+
+        let magic_number = find_magic_number(square, Piece::Bishop);
+
+        magic_numbers[sq] = magic_number.unwrap();
+
+        sq += 1;
+    }
+
+    magic_numbers
+});
+
+static ROOK_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
+    let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
+
+    let mut sq = 0;
+
+    while sq < chess_consts::SQUARES_COUNT {
+        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
+
+        let magic_number = find_magic_number(square, Piece::Rook);
+
+        magic_numbers[sq] = magic_number.unwrap();
+
+        sq += 1;
+    }
+
+    magic_numbers
+});
+
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use crate::helpers;
 
     use super::*;
@@ -430,5 +546,23 @@ mod tests {
                 println!();
             }
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_find_magic_number() {
+        let start = Instant::now();
+
+        for sq in Square::all() {
+            let bishop_magic_number = BISHOP_MAGIC_NUMBERS[sq.index() as usize];
+            let rook_magic_number = ROOK_MAGIC_NUMBERS[sq.index() as usize];
+
+            println!(
+                "Square: {sq}, Bishop magic number: {:?}, rook magic number: {:?}",
+                bishop_magic_number, rook_magic_number
+            );
+        }
+
+        println!("Elapsed: {:?}", start.elapsed().as_millis());
     }
 }
