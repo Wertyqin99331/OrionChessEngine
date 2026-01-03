@@ -54,7 +54,7 @@ const ROOK_RELEVANT_OCCUPANCY_MASKS: [u64; chess_consts::SQUARES_COUNT] = {
     relevant_masks
 };
 
-const ROOK_RELEVANT_BIT_COUNT: [u8; chess_consts::SQUARES_COUNT] = {
+const ROOK_RELEVANT_BIT_COUNTS: [u8; chess_consts::SQUARES_COUNT] = {
     let mut counts = [0; chess_consts::SQUARES_COUNT];
     let mut sq = 0;
 
@@ -66,6 +66,115 @@ const ROOK_RELEVANT_BIT_COUNT: [u8; chess_consts::SQUARES_COUNT] = {
 
     counts
 };
+
+static BISHOP_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
+    let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
+
+    let mut sq = 0;
+
+    while sq < chess_consts::SQUARES_COUNT {
+        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
+
+        let magic_number = find_magic_number(square, Piece::Bishop);
+
+        magic_numbers[sq] = magic_number.unwrap();
+
+        sq += 1;
+    }
+
+    magic_numbers
+});
+
+static ROOK_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
+    let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
+
+    let mut sq = 0;
+
+    while sq < chess_consts::SQUARES_COUNT {
+        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
+
+        let magic_number = find_magic_number(square, Piece::Rook);
+
+        magic_numbers[sq] = magic_number.unwrap();
+
+        sq += 1;
+    }
+
+    magic_numbers
+});
+
+static BISHOP_ATTACKS_TABLE: LazyLock<[[u64; 512]; chess_consts::SQUARES_COUNT]> =
+    LazyLock::new(|| {
+        let mut attacks_table = [[0; 512]; chess_consts::SQUARES_COUNT];
+
+        for square in Square::all() {
+            let sq_index = square.index() as usize;
+            let relevant_bits_count = BISHOP_RELEVANT_BIT_COUNTS[sq_index];
+            let relevant_occupancy_mask = BISHOP_RELEVANT_OCCUPANCY_MASKS[sq_index];
+
+            let occupancy_indicies = 2u32.pow(relevant_bits_count as u32);
+
+            for occupancy_index in 0..occupancy_indicies {
+                let blocker_mask = build_blocker_mask(occupancy_index, relevant_occupancy_mask);
+
+                let shift = 64u32 - (relevant_bits_count as u32);
+                let magic_index =
+                    blocker_mask.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_index]) >> shift;
+                attacks_table[sq_index][magic_index as usize] =
+                    generate_bishop_attacks_mask(square, blocker_mask);
+            }
+        }
+
+        attacks_table
+    });
+
+static ROOK_ATTACKS_TABLE: LazyLock<Box<[[u64; 4096]; chess_consts::SQUARES_COUNT]>> =
+    LazyLock::new(|| {
+        let flat: Box<[u64]> = vec![0u64; 4096 * chess_consts::SQUARES_COUNT].into_boxed_slice();
+        let ptr = Box::into_raw(flat) as *mut [[u64; 4096]; chess_consts::SQUARES_COUNT];
+        let mut attacks_table: Box<[[u64; 4096]; chess_consts::SQUARES_COUNT]> =
+            unsafe { Box::from_raw(ptr) };
+
+        for square in Square::all() {
+            let sq_index = square.index() as usize;
+            let relevant_bits_count = ROOK_RELEVANT_BIT_COUNTS[sq_index];
+            let relevant_occupancy_mask = ROOK_RELEVANT_OCCUPANCY_MASKS[sq_index];
+
+            let occupancy_indicies = 2u32.pow(relevant_bits_count as u32);
+
+            for occupancy_index in 0..occupancy_indicies {
+                let blocker_mask = build_blocker_mask(occupancy_index, relevant_occupancy_mask);
+
+                let shift = 64u32 - (relevant_bits_count as u32);
+                let magic_index = blocker_mask.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_index]) >> shift;
+
+                attacks_table[sq_index][magic_index as usize] =
+                    generate_rook_attacks_mask(square, blocker_mask);
+            }
+        }
+
+        attacks_table
+    });
+
+pub(crate) fn get_bishop_attacks_mask(square: Square, mut occupancy: u64) -> u64 {
+    let square_index = square.index() as usize;
+    occupancy &= BISHOP_RELEVANT_OCCUPANCY_MASKS[square_index];
+
+    let magic_index = (occupancy.wrapping_mul(BISHOP_MAGIC_NUMBERS[square_index]))
+        >> (64 - BISHOP_RELEVANT_BIT_COUNTS[square_index]);
+
+    BISHOP_ATTACKS_TABLE[square_index][magic_index as usize]
+}
+
+pub(crate) fn get_rook_attacks_mask(square: Square, mut occupancy: u64) -> u64 {
+    let square_index = square.index() as usize;
+    occupancy &= ROOK_RELEVANT_OCCUPANCY_MASKS[square_index];
+
+    let magic_index = (occupancy.wrapping_mul(ROOK_MAGIC_NUMBERS[square_index]))
+        >> (64 - ROOK_RELEVANT_BIT_COUNTS[square_index]);
+
+    ROOK_ATTACKS_TABLE[square_index][magic_index as usize]
+}
 
 pub(crate) const fn generate_relevant_bishop_occupancy_mask(square: Square) -> u64 {
     let mut attacks_bb = chess_consts::EMPTY_BB;
@@ -397,42 +506,6 @@ const fn find_magic_number(square: Square, piece: Piece) -> Option<u64> {
     None
 }
 
-static BISHOP_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
-    let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
-
-    let mut sq = 0;
-
-    while sq < chess_consts::SQUARES_COUNT {
-        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
-
-        let magic_number = find_magic_number(square, Piece::Bishop);
-
-        magic_numbers[sq] = magic_number.unwrap();
-
-        sq += 1;
-    }
-
-    magic_numbers
-});
-
-static ROOK_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
-    let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
-
-    let mut sq = 0;
-
-    while sq < chess_consts::SQUARES_COUNT {
-        let square = unsafe { Square::from_u8_unchecked(sq as u8) };
-
-        let magic_number = find_magic_number(square, Piece::Rook);
-
-        magic_numbers[sq] = magic_number.unwrap();
-
-        sq += 1;
-    }
-
-    magic_numbers
-});
-
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
@@ -541,7 +614,7 @@ mod tests {
 
         println!("Rook relevant bit counts table");
         for i in 0..chess_consts::SQUARES_COUNT {
-            print!("{} ", ROOK_RELEVANT_BIT_COUNT[i]);
+            print!("{} ", ROOK_RELEVANT_BIT_COUNTS[i]);
             if i % chess_consts::BOARD_SIZE == 7 {
                 println!();
             }
@@ -564,5 +637,21 @@ mod tests {
         }
 
         println!("Elapsed: {:?}", start.elapsed().as_millis());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_bishop_rook_attacks_tables() {
+        println!("Bishop a1 with B2 blocker");
+        helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::B2.bit()));
+
+        println!("Bishop a1 with C3 blocker");
+        helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::C3.bit()));
+
+        println!("Rook a1 with B1 blocker");
+        helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::B1.bit()));
+
+        println!("Rook a1 with C1  blocker");
+        helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::C1.bit()));
     }
 }
