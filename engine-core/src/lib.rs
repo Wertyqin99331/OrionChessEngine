@@ -1,8 +1,11 @@
+mod board;
 mod chess_consts;
 mod enums;
+mod fen_parser;
 mod helpers;
 mod king_attack_table;
 mod knight_attack_table;
+mod move_generator;
 mod pawn_attack_table;
 mod random_generator;
 mod sliding_piece_attack_table;

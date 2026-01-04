@@ -16,7 +16,7 @@ const KNIGHT_ATTACKS_TABLE: [u64; chess_consts::SQUARES_COUNT] = {
 };
 
 /// Get a knight attack table bb based on its square (pre-generated)
-pub const fn get_knight_attacks_mask(square: Square) -> u64 {
+pub(crate) const fn get_knight_attacks_mask(square: Square) -> u64 {
     KNIGHT_ATTACKS_TABLE[square.index() as usize]
 }
 

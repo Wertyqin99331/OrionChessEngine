@@ -1,6 +1,6 @@
 use crate::{
     chess_consts::{self, BOARD_SIZE},
-    enums::{File, Rank, Square},
+    enums::{File, Piece, Rank, Side, Square},
 };
 
 /// Prints the bitboard to stdout
@@ -100,6 +100,43 @@ pub const fn file_mask(file: File) -> u64 {
 /// Returns a mask with only this (rank, file) bit set
 pub const fn square_mask(rank: u8, file: u8) -> u64 {
     1u64 << (rank * chess_consts::BOARD_SIZE as u8 + file)
+}
+
+pub fn squares_mask(squares: impl IntoIterator<Item = Square>) -> u64 {
+    let mut bb = 0;
+
+    for sq in squares.into_iter() {
+        bb |= sq.bit();
+    }
+
+    bb
+}
+
+/// Returns an iterator over indexes of set bits from LSB
+/// # Examples
+/// 1010 -> 1 3
+#[inline]
+pub(crate) fn get_bits_iter(bb: u64) -> impl Iterator<Item = usize> {
+    let mut x = bb;
+
+    std::iter::from_fn(move || {
+        if x == 0 {
+            None
+        } else {
+            let sq = x.trailing_zeros() as usize;
+            x &= x - 1;
+            Some(sq)
+        }
+    })
+}
+
+#[inline]
+pub(crate) fn get_ascii_piece_char(side: Side, piece: Piece) -> char {
+    const ASCII_PIECE_CHARS: [char; chess_consts::PIECE_TYPES_COUNT * 2] =
+        ['P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k'];
+
+    ASCII_PIECE_CHARS
+        [(side.index() * chess_consts::PIECE_TYPES_COUNT as u8 + piece.index()) as usize]
 }
 
 #[cfg(test)]

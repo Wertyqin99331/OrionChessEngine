@@ -15,7 +15,7 @@ const KING_ATTACKS_TABLE: [u64; chess_consts::SQUARES_COUNT] = {
     table
 };
 
-pub const fn get_king_attacks_mask(square: Square) -> u64 {
+pub(crate) const fn get_king_attacks_mask(square: Square) -> u64 {
     KING_ATTACKS_TABLE[square.index() as usize]
 }
 

@@ -24,7 +24,7 @@ const PAWN_ATTACKS_TABLE: [[u64; chess_consts::SQUARES_COUNT]; chess_consts::SID
 };
 
 /// Get an attack bb based on its position and square (pre-generated)
-pub const fn get_pawn_attacks_mask(side: Side, square: Square) -> u64 {
+pub(crate) const fn get_pawn_attacks_mask(side: Side, square: Square) -> u64 {
     PAWN_ATTACKS_TABLE[side.index() as usize][square.index() as usize]
 }
 

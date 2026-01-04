@@ -176,10 +176,14 @@ pub(crate) fn get_rook_attacks_mask(square: Square, mut occupancy: u64) -> u64 {
     ROOK_ATTACKS_TABLE[square_index][magic_index as usize]
 }
 
-pub(crate) const fn generate_relevant_bishop_occupancy_mask(square: Square) -> u64 {
+pub(crate) fn get_queen_attacks_mask(square: Square, occupancy: u64) -> u64 {
+    get_bishop_attacks_mask(square, occupancy) | get_rook_attacks_mask(square, occupancy)
+}
+
+const fn generate_relevant_bishop_occupancy_mask(square: Square) -> u64 {
     let mut attacks_bb = chess_consts::EMPTY_BB;
 
-    let (target_rank, target_file) = (square.rank(), square.file());
+    let (target_rank, target_file) = (square.rank().index(), square.file().index());
 
     // Up-right
     let mut rank = target_rank + 1;
@@ -225,8 +229,8 @@ pub(crate) const fn generate_relevant_bishop_occupancy_mask(square: Square) -> u
     attacks_bb
 }
 
-pub(crate) const fn generate_relevant_rook_occupancy_mask(square: Square) -> u64 {
-    let (target_rank, target_file) = (square.rank(), square.file());
+const fn generate_relevant_rook_occupancy_mask(square: Square) -> u64 {
+    let (target_rank, target_file) = (square.rank().index(), square.file().index());
 
     let mut attacks_bb = chess_consts::EMPTY_BB;
 
@@ -409,7 +413,7 @@ const fn generate_rook_attacks_mask(square: Square, blockers: u64) -> u64 {
     attacks_bb
 }
 
-pub(crate) const fn build_blocker_mask(index: u32, mut relevant_mask: u64) -> u64 {
+const fn build_blocker_mask(index: u32, mut relevant_mask: u64) -> u64 {
     let mut blocker = chess_consts::EMPTY_BB;
     let bits = relevant_mask.count_ones();
 
@@ -542,7 +546,6 @@ mod tests {
 
         println!("{} with blocker on {}", Square::E4, Square::G6);
         helpers::print_bitboard(generate_bishop_attacks_mask(Square::E4, Square::G6.bit()));
-
         println!(
             "{} with blockers on {} and {}",
             Square::D4,
@@ -653,5 +656,24 @@ mod tests {
 
         println!("Rook a1 with C1  blocker");
         helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::C1.bit()));
+
+        println!("Rook e4 with e7, g4, d4 blockers");
+        helpers::print_bitboard(get_rook_attacks_mask(
+            Square::E4,
+            helpers::squares_mask([Square::E7, Square::G4, Square::D4]),
+        ));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_queen_attacks_table() {
+        println!("Queen a1 with no blockers");
+        helpers::print_bitboard(get_queen_attacks_mask(Square::A1, chess_consts::EMPTY_BB));
+
+        println!("Queen a1 with blockers on a4 and d1 and c3");
+        helpers::print_bitboard(get_queen_attacks_mask(
+            Square::A1,
+            helpers::squares_mask([Square::A4, Square::D1, Square::C3]),
+        ));
     }
 }
