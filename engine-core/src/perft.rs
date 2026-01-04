@@ -1,17 +1,21 @@
-use crate::board::Board;
+use crate::{board::Board, move_generator::MoveBuffer};
 
-pub(crate) fn perft(board: &mut Board, depth: u32) -> u64 {
+const MAX_PLY: usize = 128;
+
+pub(crate) fn perft(board: &mut Board, depth: u32, ply: usize, bufs: &mut [MoveBuffer]) -> u64 {
     if depth == 0 {
         return 1;
     }
 
-    let moves = board.generate_legal_moves(board.game_state.side_to_move);
+    let (cur, rest) = bufs.split_first_mut().unwrap();
+
+    board.generate_legal_moves(board.game_state.side_to_move, cur);
 
     let mut nodes = 0;
 
-    for mv in moves {
+    for &mv in cur.iter() {
         board.make_move(mv);
-        nodes += perft(board, depth - 1);
+        nodes += perft(board, depth - 1, ply + 1, rest);
         board.unmake_move();
     }
 
@@ -27,8 +31,10 @@ mod tests {
     fn test_perft(fen_str: &str, expectations: &[(u32, u64)]) {
         let mut board = fen_parser::parse_fen_string(fen_str).unwrap();
 
+        let mut bufs: Vec<MoveBuffer> = (0..MAX_PLY).map(|_| Vec::with_capacity(256)).collect();
+
         for &(depth, expected_moves_count) in expectations {
-            assert_eq!(expected_moves_count, perft(&mut board, depth));
+            assert_eq!(expected_moves_count, perft(&mut board, depth, 0, &mut bufs));
         }
     }
 
@@ -49,7 +55,8 @@ mod tests {
                 (2, 2039),
                 (3, 97_862),
                 (4, 4_085_603),
-                (5, 193_690_690),
+                (5, 19_3690_690),
+                (6, 8_031_647_685),
             ],
         );
     }
