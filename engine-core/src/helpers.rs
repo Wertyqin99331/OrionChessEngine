@@ -4,7 +4,7 @@ use crate::{
 };
 
 /// Prints the bitboard to stdout
-#[cfg(debug_assertions)]
+#[cfg(any(test, debug_assertions))]
 pub fn print_bitboard(bitboard: u64) {
     for rank in (0..8).rev() {
         for file in 0..8 {
@@ -27,6 +27,9 @@ pub fn print_bitboard(bitboard: u64) {
     println!("    a b c d e f g h");
     println!("\n    Integer value: {bitboard}, hex value: {bitboard:#018x}")
 }
+
+#[cfg(not(any(test, debug_assertions)))]
+pub(crate) fn print_bitboard(_: u64) {}
 
 /// Shows whether a bit at some certain place is set in the bitboard
 /// # Arguments
@@ -124,6 +127,24 @@ pub(crate) fn get_bits_iter(bb: u64) -> impl Iterator<Item = usize> {
             None
         } else {
             let sq = x.trailing_zeros() as usize;
+            x &= x - 1;
+            Some(sq)
+        }
+    })
+}
+
+/// Returns an iterator over indexes of set bits from LSB
+/// # Examples
+/// 1010 -> B1 D1
+#[inline]
+pub(crate) fn get_squares_iter(bb: u64) -> impl Iterator<Item = Square> {
+    let mut x = bb;
+
+    std::iter::from_fn(move || {
+        if x == 0 {
+            None
+        } else {
+            let sq = unsafe { Square::from_u8_unchecked(x.trailing_zeros() as u8) };
             x &= x - 1;
             Some(sq)
         }

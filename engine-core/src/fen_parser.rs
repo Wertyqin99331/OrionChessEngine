@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use crate::{
-    board::Board,
+    board::{Board, CastlingState},
     chess_consts,
-    enums::{Castling, File, Piece, Rank, Side, Square},
+    enums::{File, Piece, Rank, Side, Square},
 };
 
 const FEN_PARTS_COUNT: usize = 6;
@@ -151,11 +151,23 @@ fn parse_castling_rights(board: &mut Board, part: &str) -> ParseFenPartResult {
     if (1..=4).contains(&part.len()) {
         for ch in part.chars() {
             match ch {
-                'K' => board.game_state.castling_state.0 |= Castling::WhiteKingSide.index(),
-                'Q' => board.game_state.castling_state.0 |= Castling::WhiteQueenSide.index(),
-                'k' => board.game_state.castling_state.0 |= Castling::BlackKingSide.index(),
-                'q' => board.game_state.castling_state.0 |= Castling::BlackQueenSide.index(),
-                '-' if part.len() == 1 => board.game_state.castling_state.0 = Castling::No.index(),
+                'K' => board
+                    .game_state
+                    .castling_state
+                    .insert(CastlingState::WHITE_KINGSIDE),
+                'Q' => board
+                    .game_state
+                    .castling_state
+                    .insert(CastlingState::WHITE_QUEENSIDE),
+                'k' => board
+                    .game_state
+                    .castling_state
+                    .insert(CastlingState::BLACK_KINGSIDE),
+                'q' => board
+                    .game_state
+                    .castling_state
+                    .insert(CastlingState::BLACK_QUEENSIDE),
+                '-' if part.len() == 1 => board.game_state.castling_state = CastlingState::empty(),
                 _ => return Err(ParseFenError::CastlingRightsParse),
             }
         }

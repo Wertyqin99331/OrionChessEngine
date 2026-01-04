@@ -1,6 +1,8 @@
 use bitflags;
 use std::fmt;
 
+use crate::{chess_consts, helpers};
+
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum Side {
@@ -117,6 +119,34 @@ impl Square {
     pub(crate) fn can_be_en_passant(self) -> bool {
         (Square::A3.index()..=Square::H3.index()).contains(&self.index())
             || (Square::A6.index()..=Square::H6.index()).contains(&self.index())
+    }
+
+    /// Checks wheter the given square can be target for given sisde
+    /// # Examples
+    /// A6 White - true, A6 can be captured by white paswn as en-passant square
+    /// A6 Black - false, all black capture en-passant squares are on the 3th rank
+    /// A3 Black - true
+    /// A3 White - false
+    pub(crate) fn is_en_passant_target_for(self, side: Side) -> bool {
+        match side {
+            Side::White => self.rank() == Rank::R6,
+            Side::Black => self.rank() == Rank::R3,
+        }
+    }
+
+    /// Moves backward on one rank
+    /// # Examples
+    /// A2 White -> A1
+    /// A2 Black -> A3
+    pub(crate) fn backward(self, side: Side) -> Square {
+        match side {
+            Side::White => unsafe {
+                Square::from_u8_unchecked(self.index() - chess_consts::BOARD_SIZE as u8)
+            },
+            Side::Black => unsafe {
+                Square::from_u8_unchecked(self.index() + chess_consts::BOARD_SIZE as u8)
+            },
+        }
     }
 }
 
@@ -238,7 +268,7 @@ impl TryFrom<u8> for Rank {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[rustfmt::skip]
 pub(crate) enum Piece {Pawn, Knight, Bishop, Rook, Queen, King}
 
@@ -259,24 +289,7 @@ impl Piece {
     }
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub(crate) enum Castling {
-    No = 0u8,
-    WhiteKingSide = 1u8 << 0,
-    WhiteQueenSide = 1u8 << 1,
-    BlackKingSide = 1u8 << 2,
-    BlackQueenSide = 1u8 << 3,
-}
-
-impl Castling {
-    #[inline]
-    pub(crate) const fn index(self) -> u8 {
-        self as u8
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Move {
     Normal {
         from: Square,
@@ -287,18 +300,74 @@ pub(crate) enum Move {
         flags: MoveFlags,
     },
     Castle {
-        side: CastleSide,
+        side: CastlingSide,
     },
 }
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum CastleSide {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CastlingSide {
     KingSide,
     QueenSide,
 }
 
+impl CastlingSide {
+    pub(crate) const WHITE_KING_SIDE_EMPTY_MASK: u64 = Square::F1.bit() | Square::G1.bit();
+    pub(crate) const WHITE_KING_SIDE_NOT_ATTACKED_MASK: u64 =
+        CastlingSide::WHITE_KING_SIDE_EMPTY_MASK | Square::E1.bit();
+
+    pub(crate) const WHITE_QUEEN_SIDE_EMPTY_MASK: u64 =
+        Square::B1.bit() | Square::C1.bit() | Square::D1.bit();
+    pub(crate) const WHITE_QUEEN_SIDE_NOT_ATTACKED_MASK: u64 =
+        Square::C1.bit() | Square::D1.bit() | Square::E1.bit();
+
+    pub(crate) const BLACK_KING_SIDE_EMPTY_MASK: u64 = Square::F8.bit() | Square::G8.bit();
+    pub(crate) const BLACK_KING_SIDE_NOT_ATTACKED_MASK: u64 =
+        CastlingSide::BLACK_KING_SIDE_EMPTY_MASK | Square::E8.bit();
+
+    pub(crate) const BLACK_QUEEN_SIDE_EMPTY_MASK: u64 =
+        Square::B8.bit() | Square::C8.bit() | Square::D8.bit();
+    pub(crate) const BLACK_QUEEN_SIDE_NOT_ATTACKED_MASK: u64 =
+        Square::C8.bit() | Square::D8.bit() | Square::E8.bit();
+
+    pub(crate) const WHITE_KING_CASTLING_START_POS: Square = Square::E1;
+    pub(crate) const WHITE_KING_KING_SIDE_CASTLING_END_POS: Square = Square::G1;
+    pub(crate) const WHITE_KING_QUEEN_SIDE_CASTLING_END_POS: Square = Square::C1;
+    pub(crate) const WHITE_ROOK_KING_SIDE_CASTLING_START_POS: Square = Square::H1;
+    pub(crate) const WHITE_ROOK_KING_SIDE_CASTLING_END_POS: Square = Square::F1;
+    pub(crate) const WHITE_ROOK_QUEEN_SIDE_START_POS: Square = Square::A1;
+    pub(crate) const WHITE_ROOK_QUEEN_SIDE_END_POS: Square = Square::D1;
+
+    pub(crate) fn get_castling_positions(
+        side: Side,
+        piece: Piece,
+        castling_side: CastlingSide,
+    ) -> (Square, Square) {
+        if !&[Piece::King, Piece::Rook].contains(&piece) {
+            panic!("Wrong piece type");
+        }
+
+        if side == Side::White {
+            match (piece, castling_side) {
+                (Piece::King, CastlingSide::KingSide) => return (Square::E1, Square::G1),
+                (Piece::King, CastlingSide::QueenSide) => return (Square::E1, Square::C1),
+                (Piece::Rook, CastlingSide::KingSide) => return (Square::H1, Square::F1),
+                (Piece::Rook, CastlingSide::QueenSide) => return (Square::A1, Square::D1),
+                _ => unreachable!(),
+            }
+        } else {
+            match (piece, castling_side) {
+                (Piece::King, CastlingSide::KingSide) => return (Square::E8, Square::G8),
+                (Piece::King, CastlingSide::QueenSide) => return (Square::E8, Square::C8),
+                (Piece::Rook, CastlingSide::KingSide) => return (Square::H8, Square::F8),
+                (Piece::Rook, CastlingSide::QueenSide) => return (Square::A8, Square::D8),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
 bitflags::bitflags! {
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub(crate) struct MoveFlags: u8 {
         const NONE        = 0;
         const EN_PASSANT  = 1 << 0;
@@ -349,5 +418,11 @@ mod tests {
     fn square_try_from_tests() {
         assert_eq!(Square::try_from(0).unwrap(), Square::A1);
         assert_eq!(Square::try_from(63).unwrap(), Square::H8);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_move_size() {
+        println!("Move size: {}", std::mem::size_of::<Move>());
     }
 }

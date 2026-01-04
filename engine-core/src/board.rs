@@ -2,8 +2,9 @@ use std::fmt::Display;
 
 use crate::{
     chess_consts,
-    enums::{Castling, Move, Piece, Side, Square},
+    enums::{CastlingSide, Piece, Side, Square},
     fen_parser, helpers,
+    history::History,
     king_attack_table::get_king_attacks_mask,
     knight_attack_table::get_knight_attacks_mask,
     pawn_attack_table::get_pawn_attacks_mask,
@@ -12,15 +13,26 @@ use crate::{
     },
 };
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Board {
     pub(crate) bitboards: [u64; chess_consts::PIECE_TYPES_COUNT * 2],
     pub(crate) side_occupancies: [u64; chess_consts::SIDES_COUNT],
     pub(crate) global_occupancy: u64,
     pub(crate) game_state: GameState,
+    pub(crate) history: History,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+impl PartialEq for Board {
+    fn eq(&self, other: &Self) -> bool {
+        self.bitboards == other.bitboards
+            && self.side_occupancies == other.side_occupancies
+            && self.global_occupancy == other.global_occupancy
+            && self.game_state == other.game_state
+            && self.history.len() == other.history.len()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GameState {
     pub(crate) side_to_move: Side,
     pub(crate) en_passant_square: Option<Square>,
@@ -42,6 +54,10 @@ impl Board {
 
     pub(crate) fn get_occupancy_bb(&self, side: Side) -> u64 {
         self.side_occupancies[side.index() as usize]
+    }
+
+    pub(crate) fn get_occupancy_bb_mut(&mut self, side: Side) -> &mut u64 {
+        &mut self.side_occupancies[side.index() as usize]
     }
 
     pub(crate) fn recalc_occupancies(&mut self) {
@@ -121,6 +137,21 @@ impl Board {
         false
     }
 
+    pub fn is_in_check(&self, side: Side) -> bool {
+        let king_sq = self.get_king_square(side);
+        self.is_square_attacked(king_sq, side.opposite())
+    }
+
+    pub fn get_king_square(&self, side: Side) -> Square {
+        debug_assert!(
+            self.get_bb(side, Piece::King) != 0,
+            "No king on board for {:?}",
+            side
+        );
+
+        unsafe { Square::from_u8_unchecked(self.get_bb(side, Piece::King).trailing_zeros() as u8) }
+    }
+
     pub(crate) fn get_empty_bb(&self) -> u64 {
         !self.global_occupancy
     }
@@ -141,6 +172,24 @@ impl Board {
 
     pub(crate) fn get_start_position() -> Board {
         fen_parser::parse_fen_string(chess_consts::fen_strings::START_POS_FEN).unwrap()
+    }
+
+    pub(crate) fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        let mask = square.bit();
+        *self.get_bb_mut(side, piece) |= mask;
+        *self.get_occupancy_bb_mut(side) |= mask;
+        self.global_occupancy |= mask;
+    }
+
+    pub(crate) fn remove_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        let mask = square.bit();
+        *self.get_bb_mut(side, piece) &= !mask;
+        *self.get_occupancy_bb_mut(side) &= !mask;
+        self.global_occupancy &= !mask;
+    }
+    pub(crate) fn move_piece(&mut self, side: Side, piece: Piece, from: Square, to: Square) {
+        self.remove_piece(side, piece, from);
+        self.add_piece(side, piece, to);
     }
 }
 
@@ -190,30 +239,88 @@ impl Display for Board {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct CastlingState(pub(crate) u8);
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub(crate) struct CastlingState: u8 {
+        const WHITE_KINGSIDE  = 1 << 0;
+        const WHITE_QUEENSIDE = 1 << 1;
+        const BLACK_KINGSIDE  = 1 << 2;
+        const BLACK_QUEENSIDE = 1 << 3;
+    }
+}
+
+impl CastlingState {
+    pub fn remove_all(&mut self, side: Side) {
+        match side {
+            Side::White => {
+                self.remove(CastlingState::WHITE_KINGSIDE);
+                self.remove(CastlingState::WHITE_QUEENSIDE);
+            }
+            Side::Black => {
+                self.remove(CastlingState::BLACK_KINGSIDE);
+                self.remove(CastlingState::BLACK_QUEENSIDE);
+            }
+        }
+    }
+
+    pub fn remove_rook(&mut self, side: Side, square: Square) {
+        match side {
+            Side::White => match square {
+                Square::A1 => self.remove(CastlingState::WHITE_QUEENSIDE),
+                Square::H1 => self.remove(CastlingState::WHITE_KINGSIDE),
+                _ => {}
+            },
+            Side::Black => match square {
+                Square::A8 => self.remove(CastlingState::BLACK_QUEENSIDE),
+                Square::H8 => self.remove(CastlingState::BLACK_KINGSIDE),
+                _ => {}
+            },
+        }
+    }
+}
+
+impl CastlingState {
+    pub(crate) fn get_castlings(&self, side: Side) -> impl Iterator<Item = CastlingSide> {
+        let ks = match side {
+            Side::White => self.contains(CastlingState::WHITE_KINGSIDE),
+            Side::Black => self.contains(CastlingState::BLACK_KINGSIDE),
+        };
+
+        let qs = match side {
+            Side::White => self.contains(CastlingState::WHITE_QUEENSIDE),
+            Side::Black => self.contains(CastlingState::BLACK_QUEENSIDE),
+        };
+
+        [
+            ks.then_some(CastlingSide::KingSide),
+            qs.then_some(CastlingSide::QueenSide),
+        ]
+        .into_iter()
+        .flatten()
+    }
+}
 
 impl Display for CastlingState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}{}{}{}",
-            if self.0 & Castling::WhiteKingSide.index() != 0 {
+            if self.contains(CastlingState::WHITE_KINGSIDE) {
                 'K'
             } else {
                 '-'
             },
-            if self.0 & Castling::WhiteQueenSide.index() != 0 {
+            if self.contains(CastlingState::WHITE_QUEENSIDE) {
                 'Q'
             } else {
                 '-'
             },
-            if self.0 & Castling::BlackKingSide.index() != 0 {
+            if self.contains(CastlingState::BLACK_KINGSIDE) {
                 'k'
             } else {
                 '-'
             },
-            if self.0 & Castling::BlackQueenSide.index() != 0 {
+            if self.contains(CastlingState::BLACK_QUEENSIDE) {
                 'q'
             } else {
                 '-'
@@ -240,8 +347,10 @@ mod tests {
 
         board.game_state.en_passant_square = Some(Square::E3);
 
-        board.game_state.castling_state =
-            CastlingState(Castling::WhiteKingSide.index() | Castling::BlackKingSide.index());
+        board
+            .game_state
+            .castling_state
+            .insert(CastlingState::WHITE_KINGSIDE | CastlingState::BLACK_KINGSIDE);
 
         println!("{board}");
     }
