@@ -1,7 +1,7 @@
 use bitflags;
 use std::fmt;
 
-use crate::{chess_consts, helpers};
+use crate::chess_consts;
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

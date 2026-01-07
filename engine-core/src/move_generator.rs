@@ -53,6 +53,14 @@ impl Board {
 
         buf.truncate(write);
     }
+
+    pub(crate) fn generate_legal_moves_to_vec(&mut self, side: Side) -> Vec<Move> {
+        let mut buf = Vec::with_capacity(chess_consts::MOVES_BUF_SIZE);
+
+        self.generate_legal_moves(side, &mut buf);
+
+        buf
+    }
 }
 
 fn generate_pseudo_legal_pawn_moves(board: &Board, side: Side, buf: &mut Vec<Move>) {

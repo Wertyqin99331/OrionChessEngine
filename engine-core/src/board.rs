@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Board {
+pub struct Board {
     pub(crate) bitboards: [u64; chess_consts::PIECE_TYPES_COUNT * 2],
     pub(crate) side_occupancies: [u64; chess_consts::SIDES_COUNT],
     pub(crate) global_occupancy: u64,
