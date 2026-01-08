@@ -2,6 +2,7 @@ use crate::{
     board::Board,
     enums::{CastlingSide, Move, Piece, Side},
     fen_parser,
+    move_generator::MoveGenMode,
 };
 
 pub(crate) fn serialize_move_to_uci_str(mv: Move, side: Side) -> String {
@@ -35,7 +36,7 @@ pub(crate) fn serialize_move_to_uci_str(mv: Move, side: Side) -> String {
 
 pub(crate) fn parse_uci_move(move_str: &str, board: &mut Board) -> Option<Move> {
     let moving_side = board.game_state.side_to_move;
-    let moves = board.generate_legal_moves_to_vec(moving_side);
+    let moves = board.generate_all_legal_moves_to_vec(moving_side);
 
     for mv in moves {
         if move_str == &serialize_move_to_uci_str(mv, moving_side) {

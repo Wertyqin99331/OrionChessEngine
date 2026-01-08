@@ -1,15 +1,20 @@
-use std::{
-    sync::{Arc, mpsc},
-    thread,
-    time::Duration,
+use std::{sync::mpsc, thread};
+
+use crate::{
+    board::Board,
+    out,
+    searching::{self, StopToken},
+    uci::{self, GoMode, TimeControl},
 };
 
-use crate::{board::Board, searching::StopToken, uci};
-use rand::prelude::*;
+pub enum EngineEvent {
+    Uci(UciCommand),
+    Search(SearchEvent),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkerCmd {
-    UciNewGame,
+pub enum UciCommand {
+    NewGame,
     Position(String),
     Go(String),
     Stop,
@@ -17,164 +22,148 @@ pub enum WorkerCmd {
     Ping(u64),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SearchEvent {
+    BestMove { id: u64, mv: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkerEvent {
-    BestMove(String),
-    Info(String),
+pub enum EngineResponse {
     Pong(u64),
 }
 
 pub struct EngineWorkerHandler {
-    pub cmd_tx: mpsc::Sender<WorkerCmd>,
-    pub event_rx: mpsc::Receiver<WorkerEvent>,
+    pub engine_events_tx: mpsc::Sender<EngineEvent>,
+    pub engine_respones_rx: mpsc::Receiver<EngineResponse>,
     pub join: std::thread::JoinHandle<()>,
 }
 
+const DEFAULT_DEPTH: u32 = 4;
+
 pub fn spawn_worker() -> EngineWorkerHandler {
-    let (cmd_tx, cmd_rx) = mpsc::channel();
-    let (ev_tx, ev_rx) = mpsc::channel();
+    let (ev_tx, ev_rx) = mpsc::channel::<EngineEvent>();
+    let (engine_res_tx, engine_res_rx) = mpsc::channel::<EngineResponse>();
+
+    let ev_tx_clone = ev_tx.clone();
 
     let join = std::thread::spawn(move || {
         let mut board: Board = Board::get_start_position();
 
         let stop_token = StopToken::new();
         let mut search_thread: Option<thread::JoinHandle<()>> = None;
-        let mut search_result_rx: Option<mpsc::Receiver<String>> = None;
 
-        let stop_search =
-            |stop: &StopToken,
-             search_thread: &mut Option<thread::JoinHandle<()>>,
-             search_result_rx: &mut Option<mpsc::Receiver<String>>| {
-                if search_thread.is_some() {
-                    stop.request_stop();
+        let stop_search = |stop: &StopToken, search_thread: &mut Option<thread::JoinHandle<()>>| {
+            if search_thread.is_some() {
+                stop.request_stop();
 
-                    if let Some(rx) = search_result_rx.take() {
-                        let _ = rx.recv_timeout(Duration::from_millis(50));
-                    }
-
-                    if let Some(h) = search_thread.take() {
-                        let _ = h.join();
-                    }
-                } else {
-                    search_result_rx.take();
+                if let Some(h) = search_thread.take() {
+                    let _ = h.join();
                 }
-            };
+            }
+        };
 
-        let poll_search_result =
-            |search_thread: &mut Option<thread::JoinHandle<()>>,
-             search_result_rx: &mut Option<mpsc::Receiver<String>>| {
-                let Some(rx) = search_result_rx.as_ref() else {
-                    return;
-                };
-
-                match rx.try_recv() {
-                    Ok(bm) => {
-                        ev_tx.send(WorkerEvent::BestMove(bm)).ok();
-
-                        if let Some(search_thread_handle) = search_thread.take() {
-                            search_thread_handle.join().ok();
-                        }
-
-                        search_result_rx.take();
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {}
-                    _ => {
-                        if let Some(search_thread_handle) = search_thread.take() {
-                            search_thread_handle.join().ok();
-                        }
-
-                        search_result_rx.take();
-                    }
-                }
-            };
-
-        let cmd_timeout = Duration::from_millis(20);
+        let mut current_search_id = 0;
 
         loop {
-            poll_search_result(&mut search_thread, &mut search_result_rx);
-
-            let cmd = match cmd_rx.recv_timeout(cmd_timeout) {
+            let cmd = match ev_rx.recv() {
                 Ok(cmd) => cmd,
-                Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                _ => break,
+                Err(_) => break,
             };
 
             match cmd {
-                WorkerCmd::Ping(id) => {
-                    ev_tx.send(WorkerEvent::Pong(id)).ok();
+                EngineEvent::Uci(UciCommand::Ping(id)) => {
+                    engine_res_tx.send(EngineResponse::Pong(id)).ok();
                 }
-                WorkerCmd::UciNewGame => {
-                    stop_search(&stop_token, &mut search_thread, &mut search_result_rx);
+                EngineEvent::Uci(UciCommand::NewGame) => {
+                    stop_search(&stop_token, &mut search_thread);
                     board = Board::get_start_position();
                 }
-
-                WorkerCmd::Position(pos_cmd) => {
-                    stop_search(&stop_token, &mut search_thread, &mut search_result_rx);
+                EngineEvent::Uci(UciCommand::Position(pos_cmd)) => {
+                    stop_search(&stop_token, &mut search_thread);
                     match uci::parse_uci_position_command(&pos_cmd) {
                         Ok(b) => board = b,
                         Err(_) => {
-                            ev_tx.send(WorkerEvent::BestMove("0000".to_string())).ok();
+                            out::write_line("bestmove 0000");
                         }
                     }
                 }
+                EngineEvent::Uci(UciCommand::Go(go_cmd)) => {
+                    stop_search(&stop_token, &mut search_thread);
 
-                WorkerCmd::Go(go_cmd) => {
                     stop_token.reset();
-                    stop_search(&stop_token, &mut search_thread, &mut search_result_rx);
 
-                    let (res_tx, res_rx) = mpsc::channel::<String>();
+                    current_search_id += 1;
+                    let search_id = current_search_id;
+
+                    let ev_tx = ev_tx.clone();
+
                     let mut b = board.clone();
-                    let stop_token = stop_token.clone();
+                    let stop = stop_token.clone();
 
                     let handle = thread::spawn(move || {
-                        thread::sleep(Duration::from_millis(200));
                         let moving_side = b.game_state.side_to_move;
-                        let _ = uci::parse_uci_go_commmand(&go_cmd).ok();
+                        let go_cmd =
+                            uci::parse_uci_go_commmand(&go_cmd)
+                                .ok()
+                                .unwrap_or(uci::UciGoCommand {
+                                    mode: uci::GoMode::Depth(5),
+                                    tc: TimeControl::default(),
+                                    search_moves: None,
+                                    nodes: None,
+                                    mate: None,
+                                });
+                        let depth = if let GoMode::Depth(depth) = go_cmd.mode {
+                            depth
+                        } else {
+                            DEFAULT_DEPTH
+                        };
 
-                        let moves = b.generate_legal_moves_to_vec(moving_side);
+                        let mv = searching::search_bestmove(&mut b, depth, &stop);
+                        let mv_str = match mv {
+                            Some(mv) => uci::serialize_move_to_uci_str(mv, moving_side),
+                            None => "0000".to_string(),
+                        };
 
-                        let mut rng = rand::rng();
-                        let rnd_mv_index = rng.random_range(0..moves.len());
-                        let mv = moves[rnd_mv_index];
-
-                        let mv_str = uci::serialize_move_to_uci_str(mv, moving_side);
-                        res_tx.send(mv_str).ok();
+                        ev_tx
+                            .send(EngineEvent::Search(SearchEvent::BestMove {
+                                id: search_id,
+                                mv: mv_str,
+                            }))
+                            .ok();
                     });
 
                     search_thread = Some(handle);
-                    search_result_rx = Some(res_rx);
                 }
-
-                WorkerCmd::Stop => {
+                EngineEvent::Uci(UciCommand::Stop) => {
                     if search_thread.is_none() {
-                        let _ = ev_tx.send(WorkerEvent::BestMove("0000".to_string())).ok();
+                        out::write_line("bestmove 0000");
                         continue;
                     }
 
                     stop_token.request_stop();
 
-                    let bm = search_result_rx
-                        .take()
-                        .and_then(|rx| rx.recv().ok())
-                        .unwrap_or_else(|| "0000".to_string());
-
                     if let Some(h) = search_thread.take() {
                         let _ = h.join();
                     }
-
-                    let _ = ev_tx.send(WorkerEvent::BestMove(bm)).ok();
                 }
-                WorkerCmd::Quit => {
-                    stop_search(&stop_token, &mut search_thread, &mut search_result_rx);
+                EngineEvent::Uci(UciCommand::Quit) => {
+                    stop_search(&stop_token, &mut search_thread);
                     break;
+                }
+                EngineEvent::Search(SearchEvent::BestMove { id, mv }) => {
+                    if id != current_search_id {
+                        continue;
+                    }
+
+                    out::write_line(&format!("bestmove {mv}"));
                 }
             }
         }
     });
 
     EngineWorkerHandler {
-        cmd_tx: cmd_tx,
-        event_rx: ev_rx,
+        engine_events_tx: ev_tx_clone,
+        engine_respones_rx: engine_res_rx,
         join: join,
     }
 }

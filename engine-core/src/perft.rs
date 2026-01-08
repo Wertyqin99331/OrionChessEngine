@@ -1,6 +1,7 @@
-use crate::{board::Board, move_generator::MoveBuffer};
-
-const MAX_PLY: usize = 128;
+use crate::{
+    board::Board,
+    move_generator::{MoveBuffer, MoveGenMode},
+};
 
 pub(crate) fn perft(board: &mut Board, depth: u32, ply: usize, bufs: &mut [MoveBuffer]) -> u64 {
     if depth == 0 {
@@ -9,7 +10,7 @@ pub(crate) fn perft(board: &mut Board, depth: u32, ply: usize, bufs: &mut [MoveB
 
     let (cur, rest) = bufs.split_first_mut().unwrap();
 
-    board.generate_legal_moves(board.game_state.side_to_move, cur);
+    board.generate_all_legal_moves(board.game_state.side_to_move, cur);
 
     let mut nodes = 0;
 
@@ -31,7 +32,7 @@ mod tests {
     fn test_perft(fen_str: &str, expectations: &[(u32, u64)]) {
         let mut board = fen_parser::parse_fen_string(fen_str).unwrap();
 
-        let mut bufs: Vec<MoveBuffer> = (0..MAX_PLY)
+        let mut bufs: Vec<MoveBuffer> = (0..chess_consts::MAX_PLY)
             .map(|_| Vec::with_capacity(chess_consts::MOVES_BUF_SIZE))
             .collect();
 

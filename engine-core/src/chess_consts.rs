@@ -8,6 +8,7 @@ pub(crate) const BOARD_SIZE: usize = 8;
 pub(crate) const SQUARES_COUNT: usize = BOARD_SIZE * BOARD_SIZE;
 pub(crate) const PIECE_TYPES_COUNT: usize = 6;
 pub(crate) const MOVES_BUF_SIZE: usize = 256;
+pub(crate) const MAX_PLY: usize = 128;
 
 pub(crate) const MAX_HALF_MOVES_COUNT: u8 = 100;
 

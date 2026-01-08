@@ -1,6 +1,7 @@
 pub mod board;
 mod chess_consts;
 mod enums;
+mod evaluation;
 mod fen_parser;
 mod helpers;
 mod history;
@@ -9,6 +10,7 @@ mod knight_attack_table;
 pub mod messaging;
 mod move_generator;
 mod move_operations;
+pub mod out;
 mod pawn_attack_table;
 mod perft;
 mod random_generator;
