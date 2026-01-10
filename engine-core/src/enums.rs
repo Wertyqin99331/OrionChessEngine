@@ -69,6 +69,7 @@ impl TryFrom<u8> for Side {
 
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) enum Square {
     A1, B1, C1, D1, E1, F1, G1, H1,
@@ -215,6 +216,7 @@ impl fmt::Display for Square {
 
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) enum File { A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7 }
 
@@ -223,6 +225,7 @@ impl File {
         self as u8
     }
 
+    #[allow(dead_code)]
     pub(crate) const unsafe fn from_u8_unchecked(value: u8) -> Rank {
         unsafe { std::mem::transmute(value) }
     }
@@ -242,6 +245,7 @@ impl TryFrom<u8> for File {
 
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) enum Rank { R1=0, R2=1, R3=2, R4=3, R5=4, R6=5, R7=6, R8=7 }
 
@@ -304,6 +308,18 @@ pub(crate) enum Move {
     },
 }
 
+impl Move {
+    pub(crate) fn is_capture(&self) -> bool {
+        matches!(
+            self,
+            Move::Normal {
+                captured: Some(_),
+                ..
+            }
+        )
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum CastlingSide {
     KingSide,
@@ -328,14 +344,6 @@ impl CastlingSide {
         Square::B8.bit() | Square::C8.bit() | Square::D8.bit();
     pub(crate) const BLACK_QUEEN_SIDE_NOT_ATTACKED_MASK: u64 =
         Square::C8.bit() | Square::D8.bit() | Square::E8.bit();
-
-    pub(crate) const WHITE_KING_CASTLING_START_POS: Square = Square::E1;
-    pub(crate) const WHITE_KING_KING_SIDE_CASTLING_END_POS: Square = Square::G1;
-    pub(crate) const WHITE_KING_QUEEN_SIDE_CASTLING_END_POS: Square = Square::C1;
-    pub(crate) const WHITE_ROOK_KING_SIDE_CASTLING_START_POS: Square = Square::H1;
-    pub(crate) const WHITE_ROOK_KING_SIDE_CASTLING_END_POS: Square = Square::F1;
-    pub(crate) const WHITE_ROOK_QUEEN_SIDE_START_POS: Square = Square::A1;
-    pub(crate) const WHITE_ROOK_QUEEN_SIDE_END_POS: Square = Square::D1;
 
     pub(crate) fn get_castling_positions(
         side: Side,

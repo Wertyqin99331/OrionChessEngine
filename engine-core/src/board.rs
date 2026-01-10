@@ -8,9 +8,7 @@ use crate::{
     king_attack_table::get_king_attacks_mask,
     knight_attack_table::get_knight_attacks_mask,
     pawn_attack_table::get_pawn_attacks_mask,
-    sliding_piece_attack_table::{
-        get_bishop_attacks_mask, get_queen_attacks_mask, get_rook_attacks_mask,
-    },
+    sliding_piece_attack_table::{get_bishop_attacks_mask, get_rook_attacks_mask},
 };
 
 #[derive(Clone, Debug, Default)]
@@ -75,30 +73,6 @@ impl Board {
         self.global_occupancy = white_occupancy_bb | black_occupancy_bb;
     }
 
-    pub(crate) fn get_side_attacks_bb(&self, attacker_side: Side) -> u64 {
-        let mut attacks_bb = chess_consts::EMPTY_BB;
-
-        for piece in Piece::all() {
-            let bb = self.get_bb(attacker_side, piece);
-
-            for sq in helpers::get_bits_iter(bb) {
-                let square = unsafe { Square::from_u8_unchecked(sq as u8) };
-
-                let piece_attacks_bb = match piece {
-                    Piece::Pawn => get_pawn_attacks_mask(attacker_side, square),
-                    Piece::Knight => get_knight_attacks_mask(square),
-                    Piece::Bishop => get_bishop_attacks_mask(square, self.global_occupancy),
-                    Piece::Rook => get_rook_attacks_mask(square, self.global_occupancy),
-                    Piece::Queen => get_queen_attacks_mask(square, self.global_occupancy),
-                    Piece::King => get_king_attacks_mask(square),
-                };
-                attacks_bb |= piece_attacks_bb;
-            }
-        }
-
-        attacks_bb
-    }
-
     pub(crate) fn is_square_attacked(&self, square: Square, attacker_side: Side) -> bool {
         // Checking pawns
         let candidates_pawns_bb = get_pawn_attacks_mask(attacker_side.opposite(), square);
@@ -137,12 +111,12 @@ impl Board {
         false
     }
 
-    pub fn is_in_check(&self, side: Side) -> bool {
+    pub(crate) fn is_in_check(&self, side: Side) -> bool {
         let king_sq = self.get_king_square(side);
         self.is_square_attacked(king_sq, side.opposite())
     }
 
-    pub fn get_king_square(&self, side: Side) -> Square {
+    pub(crate) fn get_king_square(&self, side: Side) -> Square {
         debug_assert!(
             self.get_bb(side, Piece::King) != 0,
             "No king on board for {:?}",
@@ -353,18 +327,6 @@ mod tests {
             .insert(CastlingState::WHITE_KINGSIDE | CastlingState::BLACK_KINGSIDE);
 
         println!("{board}");
-    }
-
-    #[test]
-    #[ignore]
-    fn test_get_side_attacks_bb() {
-        let board = Board::get_start_position();
-
-        println!("White side attacks bb");
-        helpers::print_bitboard(board.get_side_attacks_bb(Side::White));
-
-        println!("Black side attacks bb");
-        helpers::print_bitboard(board.get_side_attacks_bb(Side::Black));
     }
 
     #[test]

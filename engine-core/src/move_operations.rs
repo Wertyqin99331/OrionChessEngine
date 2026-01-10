@@ -5,7 +5,7 @@ use crate::{
 };
 
 impl Board {
-    pub fn make_move(&mut self, mv: Move) {
+    pub(crate) fn make_move(&mut self, mv: Move) {
         // save history
         self.history
             .push(HistoryEntry::new(mv, self.game_state))

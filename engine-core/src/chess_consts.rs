@@ -14,6 +14,7 @@ pub(crate) const MAX_HALF_MOVES_COUNT: u8 = 100;
 
 pub(crate) const EMPTY_BB: u64 = 0u64;
 
+#[allow(dead_code)]
 pub(crate) mod fen_strings {
     pub(crate) const EMPTY_BOARD_FEN: &str = "8/8/8/8/8/8/8/8 w - -";
     pub(crate) const START_POS_FEN: &str =

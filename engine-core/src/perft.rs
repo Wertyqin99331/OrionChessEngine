@@ -1,8 +1,6 @@
-use crate::{
-    board::Board,
-    move_generator::{MoveBuffer, MoveGenMode},
-};
+use crate::{board::Board, move_generator::MoveBuffer};
 
+#[allow(dead_code)]
 pub(crate) fn perft(board: &mut Board, depth: u32, ply: usize, bufs: &mut [MoveBuffer]) -> u64 {
     if depth == 0 {
         return 1;

@@ -5,6 +5,7 @@ use crate::{
 
 /// Prints the bitboard to stdout
 #[cfg(any(test, debug_assertions))]
+#[allow(dead_code)]
 pub fn print_bitboard(bitboard: u64) {
     for rank in (0..8).rev() {
         for file in 0..8 {
@@ -55,6 +56,7 @@ pub const fn set_bit(bb: u64, square: Square) -> u64 {
 /// 00000001 0 -> 00000000
 /// If the bit is not set, does nothing
 /// 00010000 0 -> 00010000
+#[allow(dead_code)]
 pub const fn pop_bit(bb: u64, square: Square) -> u64 {
     let sq = square.index();
     bb & !(1u64 << sq)
@@ -64,6 +66,7 @@ pub const fn pop_bit(bb: u64, square: Square) -> u64 {
 /// # Examples
 /// 00001000 3 -> 00000000
 /// 00000000 1 -> 00000010
+#[allow(dead_code)]
 pub const fn flip_bit(bb: u64, square: Square) -> u64 {
     bb ^ (1u64 << square.index())
 }
@@ -105,6 +108,7 @@ pub const fn square_mask(rank: u8, file: u8) -> u64 {
     1u64 << (rank * chess_consts::BOARD_SIZE as u8 + file)
 }
 
+#[allow(dead_code)]
 pub fn squares_mask(squares: impl IntoIterator<Item = Square>) -> u64 {
     let mut bb = 0;
 

@@ -1,8 +1,12 @@
+use std::sync::atomic::Ordering;
+
 use crate::{
     board::Board,
+    chess_consts,
     enums::{Piece, Side},
     helpers,
     move_generator::MoveBuffer,
+    searching,
 };
 
 pub(crate) const MATE_EVALUATION: i32 = 30_000;
@@ -196,6 +200,8 @@ pub(crate) fn quiescence_eval(
     beta: i32,
     bufs: &mut [MoveBuffer],
 ) -> i32 {
+    searching::NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+
     let eval_score = evalute_cur_side(&*board);
 
     if eval_score >= beta {

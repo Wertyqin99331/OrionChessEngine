@@ -10,6 +10,7 @@ mod knight_attack_table;
 pub mod messaging;
 mod move_generator;
 mod move_operations;
+mod move_sorting;
 pub mod out;
 mod pawn_attack_table;
 mod perft;

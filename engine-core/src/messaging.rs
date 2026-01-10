@@ -38,7 +38,7 @@ pub struct EngineWorkerHandler {
     pub join: std::thread::JoinHandle<()>,
 }
 
-const DEFAULT_DEPTH: u32 = 4;
+const DEFAULT_DEPTH: u32 = 6;
 
 pub fn spawn_worker() -> EngineWorkerHandler {
     let (ev_tx, ev_rx) = mpsc::channel::<EngineEvent>();

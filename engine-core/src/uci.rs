@@ -2,7 +2,6 @@ use crate::{
     board::Board,
     enums::{CastlingSide, Move, Piece, Side},
     fen_parser,
-    move_generator::MoveGenMode,
 };
 
 pub(crate) fn serialize_move_to_uci_str(mv: Move, side: Side) -> String {
@@ -165,12 +164,13 @@ pub(crate) fn parse_uci_go_commmand(command: &str) -> Result<UciGoCommand, &'sta
 }
 
 #[derive(Debug, Clone)]
-pub struct UciGoCommand {
-    pub mode: GoMode,
-    pub tc: TimeControl,
-    pub search_moves: Option<Vec<Move>>,
-    pub nodes: Option<u64>,
-    pub mate: Option<u32>,
+#[allow(dead_code)]
+pub(crate) struct UciGoCommand {
+    pub(crate) mode: GoMode,
+    pub(crate) tc: TimeControl,
+    pub(crate) search_moves: Option<Vec<Move>>,
+    pub(crate) nodes: Option<u64>,
+    pub(crate) mate: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,11 +181,12 @@ pub(crate) enum GoMode {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct TimeControl {
-    pub wtime: Option<u64>,
-    pub btime: Option<u64>,
-    pub winc: Option<u64>,
-    pub binc: Option<u64>,
+#[allow(dead_code)]
+pub(crate) struct TimeControl {
+    pub(crate) wtime: Option<u64>,
+    pub(crate) btime: Option<u64>,
+    pub(crate) winc: Option<u64>,
+    pub(crate) binc: Option<u64>,
 }
 
 #[cfg(test)]

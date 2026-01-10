@@ -1,19 +1,17 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use rand::{Rng, seq::SliceRandom};
+use rand::seq::SliceRandom;
 
 use crate::{
-    board::Board,
-    chess_consts,
-    enums::Move,
-    evaluation,
-    move_generator::{MoveBuffer, MoveGenMode},
+    board::Board, chess_consts, enums::Move, evaluation, move_generator::MoveBuffer, move_sorting,
 };
 
 const INFINITY: i32 = 1_000_000_00;
+
+pub(crate) static NODES_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone)]
 pub struct StopToken(Arc<AtomicBool>);
@@ -46,12 +44,15 @@ pub(crate) fn negamax_ab(
     bufs: &mut [MoveBuffer],
 ) -> i32 {
     if board.game_state.half_move_clock >= 100 {
+        NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
         return 0;
     }
 
     if depth == 0 {
         return evaluation::quiescence_eval(board, alpha, beta, bufs);
     }
+
+    NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
 
     let (cur, rest) = bufs.split_first_mut().unwrap();
 
@@ -69,6 +70,8 @@ pub(crate) fn negamax_ab(
     }
 
     let mut best = -INFINITY;
+
+    move_sorting::sort_moves(cur);
 
     for mv in cur.iter().copied() {
         let cur_alpha = best.max(alpha);
@@ -109,6 +112,8 @@ pub(crate) fn negamax_ab(
 }
 
 pub(crate) fn search_bestmove(board: &mut Board, depth: u32, stop: &StopToken) -> Option<Move> {
+    NODES_COUNTER.store(0, Ordering::Relaxed);
+
     let side = board.game_state.side_to_move;
 
     let mut bufs: Vec<MoveBuffer> = (0..chess_consts::MAX_PLY)
@@ -135,6 +140,8 @@ pub(crate) fn search_bestmove(board: &mut Board, depth: u32, stop: &StopToken) -
             break;
         }
 
+        NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+
         board.make_move(mv);
 
         let score = -negamax_ab(board, depth - 1, -beta, -alpha, 1, stop, rest);
@@ -156,17 +163,15 @@ pub(crate) fn search_bestmove(board: &mut Board, depth: u32, stop: &StopToken) -
 
 #[cfg(test)]
 mod tests {
-    use crate::fen_parser;
-
     use super::*;
 
     #[test]
-    fn test_pos_searching() {
-        let mut board = fen_parser::parse_fen_string(
-            "r1bqkbnr/pppp1ppp/2n5/3P4/8/8/PPP2PPP/RNBQKBNR b KQkq - 0 4",
-        )
-        .unwrap();
+    #[ignore]
+    fn test_nodes_count() {
+        let mut board = Board::get_start_position();
 
-        let best_move = search_bestmove(&mut board, 1, &StopToken::new());
+        let _ = search_bestmove(&mut board, 7, &StopToken::new());
+
+        println!("Nodes count: {}", NODES_COUNTER.load(Ordering::Relaxed));
     }
 }

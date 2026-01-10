@@ -50,6 +50,7 @@ const fn generate_king_attacks_mask(square: Square) -> u64 {
     attack_bb
 }
 
+#[allow(unused_imports)]
 mod tests {
     use super::*;
 
