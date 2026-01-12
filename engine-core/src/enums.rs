@@ -304,6 +304,8 @@ pub(crate) enum Move {
         flags: MoveFlags,
     },
     Castle {
+        from: Square,
+        to: Square,
         side: CastlingSide,
     },
 }
@@ -317,6 +319,27 @@ impl Move {
                 ..
             }
         )
+    }
+
+    pub(crate) fn is_promo(&self) -> bool {
+        matches!(self, Move::Normal { promo: Some(_), .. })
+    }
+
+    pub(crate) fn get_castling_move(side: Side, castling_side: CastlingSide) -> Move {
+        let (from, to) = CastlingSide::get_castling_positions(side, Piece::King, castling_side);
+
+        Move::Castle {
+            from: from,
+            to: to,
+            side: castling_side,
+        }
+    }
+
+    pub(crate) fn get_from_to(&self) -> (Square, Square) {
+        match self {
+            Move::Normal { from, to, .. } => return (*from, *to),
+            &Move::Castle { from, to, .. } => return (from, to),
+        }
     }
 }
 

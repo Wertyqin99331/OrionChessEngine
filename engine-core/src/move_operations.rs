@@ -74,6 +74,7 @@ impl Board {
             }
             Move::Castle {
                 side: castling_side,
+                ..
             } => {
                 let (king_from_sq, king_to_sq) =
                     CastlingSide::get_castling_positions(moving_side, Piece::King, castling_side);
@@ -131,6 +132,7 @@ impl Board {
             }
             Move::Castle {
                 side: castling_side,
+                ..
             } => {
                 let (king_from, king_to) =
                     CastlingSide::get_castling_positions(moving_side, Piece::King, castling_side);

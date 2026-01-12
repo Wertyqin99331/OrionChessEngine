@@ -1,10 +1,10 @@
 use crate::{
     board::Board,
-    enums::{CastlingSide, Move, Piece, Side},
+    enums::{Move, Piece},
     fen_parser,
 };
 
-pub(crate) fn serialize_move_to_uci_str(mv: Move, side: Side) -> String {
+pub(crate) fn serialize_move_to_uci_str(mv: Move) -> String {
     match mv {
         Move::Normal {
             from, to, promo, ..
@@ -23,10 +23,7 @@ pub(crate) fn serialize_move_to_uci_str(mv: Move, side: Side) -> String {
             }
             return mv_str;
         }
-        Move::Castle {
-            side: castling_side,
-        } => {
-            let (from, to) = CastlingSide::get_castling_positions(side, Piece::King, castling_side);
+        Move::Castle { from, to, .. } => {
             let mv_str = format!("{from}{to}");
             return mv_str;
         }
@@ -38,7 +35,7 @@ pub(crate) fn parse_uci_move(move_str: &str, board: &mut Board) -> Option<Move> 
     let moves = board.generate_all_legal_moves_to_vec(moving_side);
 
     for mv in moves {
-        if move_str == &serialize_move_to_uci_str(mv, moving_side) {
+        if move_str == &serialize_move_to_uci_str(mv) {
             return Some(mv);
         }
     }
@@ -192,7 +189,7 @@ pub(crate) struct TimeControl {
 #[cfg(test)]
 mod tests {
     use crate::{
-        enums::{MoveFlags, Square},
+        enums::{CastlingSide, MoveFlags, Side, Square},
         fen_parser,
     };
 
@@ -208,7 +205,7 @@ mod tests {
             promo: None,
             flags: MoveFlags::empty(),
         };
-        assert_eq!("a2a4", serialize_move_to_uci_str(mv, Side::White));
+        assert_eq!("a2a4", serialize_move_to_uci_str(mv));
 
         let mv = Move::Normal {
             from: Square::A7,
@@ -218,7 +215,7 @@ mod tests {
             promo: Some(Piece::Queen),
             flags: MoveFlags::empty(),
         };
-        assert_eq!("a7a8q", serialize_move_to_uci_str(mv, Side::White));
+        assert_eq!("a7a8q", serialize_move_to_uci_str(mv));
 
         let mv = Move::Normal {
             from: Square::A7,
@@ -228,7 +225,7 @@ mod tests {
             promo: None,
             flags: MoveFlags::empty(),
         };
-        assert_eq!("a7a5", serialize_move_to_uci_str(mv, Side::White));
+        assert_eq!("a7a5", serialize_move_to_uci_str(mv));
 
         let mv = Move::Normal {
             from: Square::A2,
@@ -238,36 +235,20 @@ mod tests {
             promo: Some(Piece::Rook),
             flags: MoveFlags::empty(),
         };
-        assert_eq!("a2a1r", serialize_move_to_uci_str(mv, Side::White));
+        assert_eq!("a2a1r", serialize_move_to_uci_str(mv));
     }
 
     #[test]
     fn test_castling_moves_serialization() {
-        let king_side_castle = Move::Castle {
-            side: CastlingSide::KingSide,
-        };
+        let king_side_castle = Move::get_castling_move(Side::White, CastlingSide::KingSide);
+        assert_eq!("e1g1", serialize_move_to_uci_str(king_side_castle));
+        let queen_side_castle = Move::get_castling_move(Side::White, CastlingSide::QueenSide);
+        assert_eq!("e1c1", serialize_move_to_uci_str(queen_side_castle));
 
-        assert_eq!(
-            "e1g1",
-            serialize_move_to_uci_str(king_side_castle, Side::White)
-        );
-        assert_eq!(
-            "e8g8",
-            serialize_move_to_uci_str(king_side_castle, Side::Black)
-        );
-
-        let queen_side_castle = Move::Castle {
-            side: CastlingSide::QueenSide,
-        };
-
-        assert_eq!(
-            "e1c1",
-            serialize_move_to_uci_str(queen_side_castle, Side::White)
-        );
-        assert_eq!(
-            "e8c8",
-            serialize_move_to_uci_str(queen_side_castle, Side::Black)
-        );
+        let king_side_castle = Move::get_castling_move(Side::Black, CastlingSide::KingSide);
+        assert_eq!("e8g8", serialize_move_to_uci_str(king_side_castle));
+        let queen_side_castle = Move::get_castling_move(Side::Black, CastlingSide::QueenSide);
+        assert_eq!("e8c8", serialize_move_to_uci_str(queen_side_castle));
     }
 
     #[test]
@@ -390,17 +371,16 @@ mod tests {
         let mv = parse_uci_move("e1g1", &mut board);
         assert_eq!(
             mv,
-            Some(Move::Castle {
-                side: CastlingSide::KingSide
-            })
+            Some(Move::get_castling_move(Side::White, CastlingSide::KingSide))
         );
 
         let mv = parse_uci_move("e1c1", &mut board);
         assert_eq!(
             mv,
-            Some(Move::Castle {
-                side: CastlingSide::QueenSide
-            })
+            Some(Move::get_castling_move(
+                Side::White,
+                CastlingSide::QueenSide
+            ))
         );
 
         let mut board = fen_parser::parse_fen_string("r3k2r/8/8/8/8/8/8/8 b kq - 0 1").unwrap();
@@ -408,17 +388,16 @@ mod tests {
         let mv = parse_uci_move("e8g8", &mut board);
         assert_eq!(
             mv,
-            Some(Move::Castle {
-                side: CastlingSide::KingSide
-            })
+            Some(Move::get_castling_move(Side::Black, CastlingSide::KingSide))
         );
 
         let mv = parse_uci_move("e8c8", &mut board);
         assert_eq!(
             mv,
-            Some(Move::Castle {
-                side: CastlingSide::QueenSide
-            })
+            Some(Move::get_castling_move(
+                Side::Black,
+                CastlingSide::QueenSide
+            ))
         );
     }
 

@@ -3,13 +3,12 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use rand::seq::SliceRandom;
-
 use crate::{
-    board::Board, chess_consts, enums::Move, evaluation, move_generator::MoveBuffer, move_sorting,
+    board::Board, chess_consts, enums::Move, evaluation, move_generator::MoveBuffer, move_ordering,
 };
 
 const INFINITY: i32 = 1_000_000_00;
+const ONLY_CAPTURES_DEPTH: u32 = 2;
 
 pub(crate) static NODES_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -45,23 +44,19 @@ pub(crate) fn negamax_ab(
 ) -> i32 {
     if board.game_state.half_move_clock >= 100 {
         NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+
         return 0;
     }
 
-    if depth == 0 {
-        return evaluation::quiescence_eval(board, alpha, beta, bufs);
-    }
-
-    NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let side_to_move = board.game_state.side_to_move;
 
     let (cur, rest) = bufs.split_first_mut().unwrap();
-
     cur.clear();
-
-    let side_to_move = board.game_state.side_to_move;
     board.generate_all_legal_moves(side_to_move, cur);
 
     if cur.len() == 0 {
+        NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+
         if board.is_in_check(side_to_move) {
             return -evaluation::MATE_EVALUATION + ply as i32;
         } else {
@@ -69,9 +64,20 @@ pub(crate) fn negamax_ab(
         }
     }
 
-    let mut best = -INFINITY;
+    if depth == 0 {
+        return evaluation::quiescence_search(board, alpha, beta, bufs, ply);
+    }
 
-    move_sorting::sort_moves(cur);
+    NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let only_captures = if depth <= ONLY_CAPTURES_DEPTH as u32 {
+        true
+    } else {
+        false
+    };
+    move_ordering::sort_moves(cur, ply, only_captures);
+
+    let mut best = -INFINITY;
 
     for mv in cur.iter().copied() {
         let cur_alpha = best.max(alpha);
@@ -86,7 +92,6 @@ pub(crate) fn negamax_ab(
         }
 
         board.make_move(mv);
-
         let score = -negamax_ab(
             board,
             depth - 1,
@@ -96,7 +101,6 @@ pub(crate) fn negamax_ab(
             stop_token,
             rest,
         );
-
         board.unmake_move();
 
         if score > best {
@@ -104,6 +108,11 @@ pub(crate) fn negamax_ab(
         }
 
         if score >= beta {
+            if !mv.is_capture() && !mv.is_promo() {
+                move_ordering::update_killers(mv, ply);
+                move_ordering::update_history(mv, depth);
+            }
+
             break;
         }
     }
@@ -113,22 +122,27 @@ pub(crate) fn negamax_ab(
 
 pub(crate) fn search_bestmove(board: &mut Board, depth: u32, stop: &StopToken) -> Option<Move> {
     NODES_COUNTER.store(0, Ordering::Relaxed);
+    move_ordering::clear_killers();
+    move_ordering::normalize_history();
 
     let side = board.game_state.side_to_move;
 
     let mut bufs: Vec<MoveBuffer> = (0..chess_consts::MAX_PLY)
         .map(|_| Vec::with_capacity(chess_consts::MOVES_BUF_SIZE))
         .collect();
-
-    board.generate_all_legal_moves(side, &mut bufs[0]);
-
     let (cur, rest) = bufs.split_first_mut().unwrap();
+    board.generate_all_legal_moves(side, cur);
+
     if cur.len() == 0 {
         return None;
     }
 
-    let mut rng = rand::rng();
-    cur.shuffle(&mut rng);
+    let only_captures = if depth <= ONLY_CAPTURES_DEPTH {
+        true
+    } else {
+        false
+    };
+    move_ordering::sort_moves(cur, 0, only_captures);
 
     let mut best_mv = cur[0];
     let mut best_score = -INFINITY;
@@ -143,9 +157,7 @@ pub(crate) fn search_bestmove(board: &mut Board, depth: u32, stop: &StopToken) -
         NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
 
         board.make_move(mv);
-
         let score = -negamax_ab(board, depth - 1, -beta, -alpha, 1, stop, rest);
-
         board.unmake_move();
 
         if score > best_score {
@@ -163,14 +175,17 @@ pub(crate) fn search_bestmove(board: &mut Board, depth: u32, stop: &StopToken) -
 
 #[cfg(test)]
 mod tests {
+    use crate::fen_parser;
+
     use super::*;
 
     #[test]
     #[ignore]
     fn test_nodes_count() {
-        let mut board = Board::get_start_position();
+        let mut board =
+            fen_parser::parse_fen_string(chess_consts::fen_strings::KILLER_POS_FEN).unwrap();
 
-        let _ = search_bestmove(&mut board, 7, &StopToken::new());
+        let _ = search_bestmove(&mut board, 6, &StopToken::new());
 
         println!("Nodes count: {}", NODES_COUNTER.load(Ordering::Relaxed));
     }

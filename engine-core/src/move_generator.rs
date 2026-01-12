@@ -426,7 +426,7 @@ fn generate_castling_moves(board: &Board, _: MoveGenMode, side: Side, buf: &mut 
             && helpers::get_squares_iter(not_attacked_bb)
                 .all(|square| !board.is_square_attacked(square, opposite_side))
         {
-            let mv = Move::Castle { side: castling };
+            let mv = Move::get_castling_move(side, castling);
             buf.push(mv);
         }
     }

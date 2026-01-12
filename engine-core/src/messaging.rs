@@ -101,7 +101,6 @@ pub fn spawn_worker() -> EngineWorkerHandler {
                     let stop = stop_token.clone();
 
                     let handle = thread::spawn(move || {
-                        let moving_side = b.game_state.side_to_move;
                         let go_cmd =
                             uci::parse_uci_go_commmand(&go_cmd)
                                 .ok()
@@ -120,7 +119,7 @@ pub fn spawn_worker() -> EngineWorkerHandler {
 
                         let mv = searching::search_bestmove(&mut b, depth, &stop);
                         let mv_str = match mv {
-                            Some(mv) => uci::serialize_move_to_uci_str(mv, moving_side),
+                            Some(mv) => uci::serialize_move_to_uci_str(mv),
                             None => "0000".to_string(),
                         };
 

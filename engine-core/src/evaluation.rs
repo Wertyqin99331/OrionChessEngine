@@ -2,11 +2,10 @@ use std::sync::atomic::Ordering;
 
 use crate::{
     board::Board,
-    chess_consts,
     enums::{Piece, Side},
     helpers,
     move_generator::MoveBuffer,
-    searching,
+    move_ordering, searching,
 };
 
 pub(crate) const MATE_EVALUATION: i32 = 30_000;
@@ -194,13 +193,45 @@ pub(crate) fn evalute(board: &Board, side: Side) -> i32 {
     return if side == Side::White { score } else { -score };
 }
 
-pub(crate) fn quiescence_eval(
+pub(crate) fn quiescence_search(
     board: &mut Board,
     mut alpha: i32,
     beta: i32,
     bufs: &mut [MoveBuffer],
+    ply: u32,
 ) -> i32 {
     searching::NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let moving_side = board.game_state.side_to_move;
+
+    let (cur_buf, rest_bufs) = bufs.split_first_mut().unwrap();
+    cur_buf.clear();
+
+    if board.is_in_check(moving_side) {
+        board.generate_all_legal_moves(moving_side, cur_buf);
+
+        if cur_buf.is_empty() {
+            return -MATE_EVALUATION + ply as i32;
+        }
+
+        move_ordering::sort_moves(cur_buf, ply, true);
+
+        for mv in cur_buf.iter().copied() {
+            board.make_move(mv);
+            let score = -quiescence_search(board, -beta, -alpha, rest_bufs, ply + 1);
+            board.unmake_move();
+
+            if score >= beta {
+                return beta;
+            }
+
+            if score > alpha {
+                alpha = score;
+            }
+        }
+
+        return alpha;
+    }
 
     let eval_score = evalute_cur_side(&*board);
 
@@ -212,17 +243,12 @@ pub(crate) fn quiescence_eval(
         alpha = eval_score;
     }
 
-    let moving_side = board.game_state.side_to_move;
-
-    let (cur_buf, rest_bufs) = bufs.split_first_mut().unwrap();
-
     board.generate_legal_captures(moving_side, cur_buf);
+    move_ordering::sort_moves(cur_buf, ply, true);
 
     for mv in cur_buf.iter().copied() {
         board.make_move(mv);
-
-        let score = -quiescence_eval(board, -beta, -alpha, rest_bufs);
-
+        let score = -quiescence_search(board, -beta, -alpha, rest_bufs, ply + 1);
         board.unmake_move();
 
         if score >= beta {
