@@ -147,4 +147,14 @@ impl Board {
             }
         }
     }
+
+    pub(crate) fn make_null_move(&mut self) {
+        self.game_state.side_to_move = self.game_state.side_to_move.opposite();
+        self.game_state.half_move_clock += 1;
+    }
+
+    pub(crate) fn unmake_null_move(&mut self) {
+        self.game_state.side_to_move = self.game_state.side_to_move.opposite();
+        self.game_state.half_move_clock -= 1;
+    }
 }

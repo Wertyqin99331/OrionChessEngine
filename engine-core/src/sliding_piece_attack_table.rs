@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 use crate::{
     chess_consts,
@@ -67,7 +67,11 @@ const ROOK_RELEVANT_BIT_COUNTS: [u8; chess_consts::SQUARES_COUNT] = {
     counts
 };
 
-static BISHOP_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
+static BISHOP_MAGIC_NUMBERS: OnceLock<[u64; chess_consts::SQUARES_COUNT]> = OnceLock::new();
+
+static BISHOP_ATTACKS_TABLE: OnceLock<[[u64; 512]; chess_consts::SQUARES_COUNT]> = OnceLock::new();
+
+pub(crate) fn init_bishop_magics_attacks() {
     let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
 
     let mut sq = 0;
@@ -82,10 +86,48 @@ static BISHOP_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = Lazy
         sq += 1;
     }
 
-    magic_numbers
-});
+    BISHOP_MAGIC_NUMBERS.set(magic_numbers).ok();
 
-static ROOK_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLock::new(|| {
+    let mut attacks_table = [[0; 512]; chess_consts::SQUARES_COUNT];
+
+    for square in Square::all() {
+        let sq_index = square.index() as usize;
+        let relevant_bits_count = BISHOP_RELEVANT_BIT_COUNTS[sq_index];
+        let relevant_occupancy_mask = BISHOP_RELEVANT_OCCUPANCY_MASKS[sq_index];
+
+        let occupancy_indicies = 2u32.pow(relevant_bits_count as u32);
+
+        for occupancy_index in 0..occupancy_indicies {
+            let blocker_mask = build_blocker_mask(occupancy_index, relevant_occupancy_mask);
+
+            let shift = 64u32 - (relevant_bits_count as u32);
+            let magic_index = blocker_mask.wrapping_mul(get_bishop_magics()[sq_index]) >> shift;
+            attacks_table[sq_index][magic_index as usize] =
+                generate_bishop_attacks_mask(square, blocker_mask);
+        }
+    }
+
+    BISHOP_ATTACKS_TABLE.set(attacks_table).ok();
+}
+
+pub(crate) fn get_bishop_magics() -> &'static [u64; chess_consts::SQUARES_COUNT] {
+    BISHOP_MAGIC_NUMBERS
+        .get()
+        .expect("Bishop magic numbers must be initialized before using")
+}
+
+pub(crate) fn get_bishop_attacks() -> &'static [[u64; 512]; chess_consts::SQUARES_COUNT] {
+    BISHOP_ATTACKS_TABLE
+        .get()
+        .expect("Bishop attacks must be initialized before using")
+}
+
+static ROOK_MAGIC_NUMBERS: OnceLock<[u64; chess_consts::SQUARES_COUNT]> = OnceLock::new();
+
+static ROOK_ATTACKS_TABLE: OnceLock<Box<[[u64; 4096]; chess_consts::SQUARES_COUNT]>> =
+    OnceLock::new();
+
+pub(crate) fn init_rook_magics_attacks() {
     let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
 
     let mut sq = 0;
@@ -100,80 +142,64 @@ static ROOK_MAGIC_NUMBERS: LazyLock<[u64; chess_consts::SQUARES_COUNT]> = LazyLo
         sq += 1;
     }
 
-    magic_numbers
-});
+    ROOK_MAGIC_NUMBERS.set(magic_numbers).ok();
 
-static BISHOP_ATTACKS_TABLE: LazyLock<[[u64; 512]; chess_consts::SQUARES_COUNT]> =
-    LazyLock::new(|| {
-        let mut attacks_table = [[0; 512]; chess_consts::SQUARES_COUNT];
+    let flat: Box<[u64]> = vec![0u64; 4096 * chess_consts::SQUARES_COUNT].into_boxed_slice();
+    let ptr = Box::into_raw(flat) as *mut [[u64; 4096]; chess_consts::SQUARES_COUNT];
+    let mut attacks_table: Box<[[u64; 4096]; chess_consts::SQUARES_COUNT]> =
+        unsafe { Box::from_raw(ptr) };
 
-        for square in Square::all() {
-            let sq_index = square.index() as usize;
-            let relevant_bits_count = BISHOP_RELEVANT_BIT_COUNTS[sq_index];
-            let relevant_occupancy_mask = BISHOP_RELEVANT_OCCUPANCY_MASKS[sq_index];
+    for square in Square::all() {
+        let sq_index = square.index() as usize;
+        let relevant_bits_count = ROOK_RELEVANT_BIT_COUNTS[sq_index];
+        let relevant_occupancy_mask = ROOK_RELEVANT_OCCUPANCY_MASKS[sq_index];
 
-            let occupancy_indicies = 2u32.pow(relevant_bits_count as u32);
+        let occupancy_indicies = 2u32.pow(relevant_bits_count as u32);
 
-            for occupancy_index in 0..occupancy_indicies {
-                let blocker_mask = build_blocker_mask(occupancy_index, relevant_occupancy_mask);
+        for occupancy_index in 0..occupancy_indicies {
+            let blocker_mask = build_blocker_mask(occupancy_index, relevant_occupancy_mask);
 
-                let shift = 64u32 - (relevant_bits_count as u32);
-                let magic_index =
-                    blocker_mask.wrapping_mul(BISHOP_MAGIC_NUMBERS[sq_index]) >> shift;
-                attacks_table[sq_index][magic_index as usize] =
-                    generate_bishop_attacks_mask(square, blocker_mask);
-            }
+            let shift = 64u32 - (relevant_bits_count as u32);
+            let magic_index = blocker_mask.wrapping_mul(get_rook_magics()[sq_index]) >> shift;
+
+            attacks_table[sq_index][magic_index as usize] =
+                generate_rook_attacks_mask(square, blocker_mask);
         }
+    }
 
-        attacks_table
-    });
+    ROOK_ATTACKS_TABLE.set(attacks_table).ok();
+}
 
-static ROOK_ATTACKS_TABLE: LazyLock<Box<[[u64; 4096]; chess_consts::SQUARES_COUNT]>> =
-    LazyLock::new(|| {
-        let flat: Box<[u64]> = vec![0u64; 4096 * chess_consts::SQUARES_COUNT].into_boxed_slice();
-        let ptr = Box::into_raw(flat) as *mut [[u64; 4096]; chess_consts::SQUARES_COUNT];
-        let mut attacks_table: Box<[[u64; 4096]; chess_consts::SQUARES_COUNT]> =
-            unsafe { Box::from_raw(ptr) };
+pub(crate) fn get_rook_magics() -> &'static [u64; chess_consts::SQUARES_COUNT] {
+    return ROOK_MAGIC_NUMBERS
+        .get()
+        .expect("Rook magic numbers must be initialized before using");
+}
 
-        for square in Square::all() {
-            let sq_index = square.index() as usize;
-            let relevant_bits_count = ROOK_RELEVANT_BIT_COUNTS[sq_index];
-            let relevant_occupancy_mask = ROOK_RELEVANT_OCCUPANCY_MASKS[sq_index];
-
-            let occupancy_indicies = 2u32.pow(relevant_bits_count as u32);
-
-            for occupancy_index in 0..occupancy_indicies {
-                let blocker_mask = build_blocker_mask(occupancy_index, relevant_occupancy_mask);
-
-                let shift = 64u32 - (relevant_bits_count as u32);
-                let magic_index = blocker_mask.wrapping_mul(ROOK_MAGIC_NUMBERS[sq_index]) >> shift;
-
-                attacks_table[sq_index][magic_index as usize] =
-                    generate_rook_attacks_mask(square, blocker_mask);
-            }
-        }
-
-        attacks_table
-    });
+pub(crate) fn get_rook_attacks() -> &'static [[u64; 4096]; chess_consts::SQUARES_COUNT] {
+    ROOK_ATTACKS_TABLE
+        .get()
+        .expect("Rook attacks must be initialized before using")
+}
 
 pub(crate) fn get_bishop_attacks_mask(square: Square, mut occupancy: u64) -> u64 {
     let square_index = square.index() as usize;
     occupancy &= BISHOP_RELEVANT_OCCUPANCY_MASKS[square_index];
 
-    let magic_index = (occupancy.wrapping_mul(BISHOP_MAGIC_NUMBERS[square_index]))
+    let magic_index = (occupancy.wrapping_mul(get_bishop_magics()[square_index]))
         >> (64 - BISHOP_RELEVANT_BIT_COUNTS[square_index]);
 
-    BISHOP_ATTACKS_TABLE[square_index][magic_index as usize]
+    get_bishop_attacks()[square_index][magic_index as usize]
 }
 
 pub(crate) fn get_rook_attacks_mask(square: Square, mut occupancy: u64) -> u64 {
     let square_index = square.index() as usize;
     occupancy &= ROOK_RELEVANT_OCCUPANCY_MASKS[square_index];
 
-    let magic_index = (occupancy.wrapping_mul(ROOK_MAGIC_NUMBERS[square_index]))
+    let magic_index = (occupancy.wrapping_mul(get_rook_magics()[square_index]))
         >> (64 - ROOK_RELEVANT_BIT_COUNTS[square_index]);
 
-    ROOK_ATTACKS_TABLE[square_index][magic_index as usize]
+    get_rook_attacks()[square_index][magic_index as usize]
 }
 
 pub(crate) fn get_queen_attacks_mask(square: Square, occupancy: u64) -> u64 {
@@ -514,13 +540,15 @@ const fn find_magic_number(square: Square, piece: Piece) -> Option<u64> {
 mod tests {
     use std::time::Instant;
 
-    use crate::helpers;
+    use crate::{helpers, init};
 
     use super::*;
 
     #[test]
     #[ignore]
     fn test_generate_relevant_bishop_occupancy_mask() {
+        init::init_engine();
+
         for sq in Square::all() {
             println!("{}", sq);
             helpers::print_bitboard(generate_relevant_bishop_occupancy_mask(sq));
@@ -530,6 +558,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_generate_relevant_rook_occupancy_mask() {
+        init::init_engine();
+
         for sq in Square::all() {
             println!("{}", sq);
             helpers::print_bitboard(generate_relevant_rook_occupancy_mask(sq));
@@ -539,6 +569,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_generate_bishop_attacks_mask() {
+        init::init_engine();
+
         for sq in Square::all() {
             println!("{}", sq);
             helpers::print_bitboard(generate_bishop_attacks_mask(sq, chess_consts::EMPTY_BB));
@@ -561,6 +593,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_generate_rook_attacks_mask() {
+        init::init_engine();
+
         for sq in Square::all() {
             println!("{}", sq);
             helpers::print_bitboard(generate_rook_attacks_mask(sq, chess_consts::EMPTY_BB));
@@ -594,6 +628,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_build_blocker_mask() {
+        init::init_engine();
+
         let rook_relevant_occupancy_mask = generate_relevant_rook_occupancy_mask(Square::A1);
 
         for i in (0..2i32.pow(rook_relevant_occupancy_mask.count_ones())).rev() {
@@ -605,6 +641,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_bishop_and_rook_relevant_bit_counts_tables() {
+        init::init_engine();
+
         println!("Bishop relevant bit counts table");
         for i in 0..chess_consts::SQUARES_COUNT {
             print!("{} ", BISHOP_RELEVANT_BIT_COUNTS[i]);
@@ -627,11 +665,16 @@ mod tests {
     #[test]
     #[ignore]
     fn test_find_magic_number() {
+        init::init_engine();
+
         let start = Instant::now();
 
+        init_bishop_magics_attacks();
+        init_rook_magics_attacks();
+
         for sq in Square::all() {
-            let bishop_magic_number = BISHOP_MAGIC_NUMBERS[sq.index() as usize];
-            let rook_magic_number = ROOK_MAGIC_NUMBERS[sq.index() as usize];
+            let bishop_magic_number = get_bishop_magics()[sq.index() as usize];
+            let rook_magic_number = get_rook_magics()[sq.index() as usize];
 
             println!(
                 "Square: {sq}, Bishop magic number: {:?}, rook magic number: {:?}",
@@ -645,6 +688,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_bishop_rook_attacks_tables() {
+        init::init_engine();
+
         println!("Bishop a1 with B2 blocker");
         helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::B2.bit()));
 
@@ -667,6 +712,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_queen_attacks_table() {
+        init::init_engine();
+
         println!("Queen a1 with no blockers");
         helpers::print_bitboard(get_queen_attacks_mask(Square::A1, chess_consts::EMPTY_BB));
 

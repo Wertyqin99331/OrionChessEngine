@@ -305,11 +305,15 @@ impl Display for CastlingState {
 
 #[cfg(test)]
 mod tests {
+    use crate::init;
+
     use super::*;
 
     #[test]
     #[ignore]
     fn test_board_displaying() {
+        init::init_engine();
+
         let mut board = Board::default();
 
         *board.get_bb_mut(Side::White, Piece::Pawn) =
@@ -331,8 +335,8 @@ mod tests {
 
     #[test]
     fn test_is_square_attacked() {
-        // ─────────────────────────────────────────────
-        // Start position – pawn attacks
+        init::init_engine();
+
         let board = Board::get_start_position();
 
         // White pawn attacks

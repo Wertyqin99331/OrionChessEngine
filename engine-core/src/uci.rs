@@ -90,91 +90,162 @@ pub fn parse_uci_position_command(position_str: &str) -> Result<Board, &'static 
     Ok(board)
 }
 
-pub(crate) fn parse_uci_go_commmand(command: &str) -> Result<UciGoCommand, &'static str> {
-    let error = "The string is not a valid go command";
-    let parts: Vec<_> = command.split_whitespace().collect();
+pub(crate) fn parse_uci_go_command(
+    command: &str,
+    board: &mut Board,
+) -> Result<UciGoCommand, &'static str> {
+    let mut parts = command.split_whitespace();
 
-    if parts.len() == 0 {
-        return Err(error);
+    if parts.next() != Some("go") {
+        return Err("Not a go command");
     }
 
-    if parts.len() == 1 {
-        return Ok(UciGoCommand {
-            mode: GoMode::Infinite,
-            tc: TimeControl::default(),
-            search_moves: None,
-            nodes: None,
-            mate: None,
-        });
-    }
+    let mut cmd = UciGoCommand {
+        time: TimeControl::default(),
+        depth: None,
+        move_time: None,
+        nodes: None,
+        mate: None,
+        infinite: false,
+        search_moves: None,
+    };
 
-    match parts[1] {
-        "depth" => {
-            if parts.len() < 3 {
-                return Err(error);
+    let mut parts = parts.peekable();
+
+    while let Some(tok) = parts.next() {
+        match tok {
+            "wtime" => {
+                cmd.time.wtime = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing wtime")?
+                        .parse()
+                        .map_err(|_| "Bad wtime")?,
+                );
             }
-
-            let depth = parts[2]
-                .parse::<u32>()
-                .map_err(|_| "Failed to parse depth")?;
-            return Ok(UciGoCommand {
-                mode: GoMode::Depth(depth),
-                tc: TimeControl::default(),
-                search_moves: None,
-                nodes: None,
-                mate: None,
-            });
-        }
-        "movetime" => {
-            if parts.len() < 3 {
-                return Err(error);
+            "btime" => {
+                cmd.time.btime = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing btime")?
+                        .parse()
+                        .map_err(|_| "Bad btime")?,
+                );
             }
-            let search_time = parts[2]
-                .parse::<u64>()
-                .map_err(|_| "Failed to parse search time")?;
+            "winc" => {
+                cmd.time.winc = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing winc")?
+                        .parse()
+                        .map_err(|_| "Bad winc")?,
+                );
+            }
+            "binc" => {
+                cmd.time.binc = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing binc")?
+                        .parse()
+                        .map_err(|_| "Bad binc")?,
+                );
+            }
+            "movestogo" => {
+                cmd.time.movestogo = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing movestogo")?
+                        .parse()
+                        .map_err(|_| "Bad movestogo")?,
+                );
+            }
+            "depth" => {
+                cmd.depth = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing depth")?
+                        .parse()
+                        .map_err(|_| "Bad depth")?,
+                );
+            }
+            "movetime" => {
+                cmd.move_time = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing movetime")?
+                        .parse()
+                        .map_err(|_| "Bad movetime")?,
+                );
+            }
+            "nodes" => {
+                cmd.nodes = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing nodes")?
+                        .parse()
+                        .map_err(|_| "Bad nodes")?,
+                );
+            }
+            "mate" => {
+                cmd.mate = Some(
+                    parts
+                        .next()
+                        .ok_or("Missing mate")?
+                        .parse()
+                        .map_err(|_| "Bad mate")?,
+                );
+            }
+            "infinite" => {
+                cmd.infinite = true;
+            }
+            "searchmoves" => {
+                let mut moves = Vec::new();
 
-            return Ok(UciGoCommand {
-                mode: GoMode::MoveTime(search_time),
-                tc: TimeControl::default(),
-                search_moves: None,
-                nodes: None,
-                mate: None,
-            });
+                while let Some(&mv) = parts.peek() {
+                    // stop if next token is another keyword (rare but safe)
+                    if matches!(
+                        mv,
+                        "wtime"
+                            | "btime"
+                            | "winc"
+                            | "binc"
+                            | "depth"
+                            | "nodes"
+                            | "mate"
+                            | "movetime"
+                    ) {
+                        break;
+                    }
+
+                    let mv = parts.next().unwrap();
+                    moves.push(parse_uci_move(mv, board).ok_or("Bad searchmove")?);
+                }
+
+                cmd.search_moves = Some(moves);
+            }
+            _ => {
+                // unknown tokens are ignored per UCI spec
+            }
         }
-        "infinite" => {
-            return Ok(UciGoCommand {
-                mode: GoMode::Infinite,
-                tc: TimeControl::default(),
-                search_moves: None,
-                nodes: None,
-                mate: None,
-            });
-        }
-        _ => Ok(UciGoCommand {
-            mode: GoMode::Infinite,
-            tc: TimeControl::default(),
-            search_moves: None,
-            nodes: None,
-            mate: None,
-        }),
     }
+
+    Ok(cmd)
 }
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(crate) struct UciGoCommand {
-    pub(crate) mode: GoMode,
-    pub(crate) tc: TimeControl,
-    pub(crate) search_moves: Option<Vec<Move>>,
+    pub(crate) time: TimeControl,
+
+    // Search limits
+    pub(crate) depth: Option<u32>,
+    pub(crate) move_time: Option<u64>,
     pub(crate) nodes: Option<u64>,
     pub(crate) mate: Option<u32>,
-}
+    pub(crate) infinite: bool,
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GoMode {
-    Depth(u32),
-    MoveTime(u64),
-    Infinite,
+    // Constraints
+    pub(crate) search_moves: Option<Vec<Move>>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -184,6 +255,7 @@ pub(crate) struct TimeControl {
     pub(crate) btime: Option<u64>,
     pub(crate) winc: Option<u64>,
     pub(crate) binc: Option<u64>,
+    pub(crate) movestogo: Option<u32>,
 }
 
 #[cfg(test)]
@@ -452,27 +524,23 @@ mod tests {
 
     #[test]
     fn test_parse_uci_go_command() {
-        assert!(parse_uci_go_commmand("go").is_ok());
+        let mut board = Board::get_start_position();
+
+        assert!(parse_uci_go_command("go", &mut board).is_ok());
         assert!(matches!(
-            parse_uci_go_commmand("go depth 3"),
+            parse_uci_go_command("go depth 3", &mut board),
+            Ok(UciGoCommand { depth: Some(3), .. })
+        ));
+        assert!(matches!(
+            parse_uci_go_command("go movetime 10000", &mut board),
             Ok(UciGoCommand {
-                mode: GoMode::Depth(_),
+                move_time: Some(10000),
                 ..
             })
         ));
         assert!(matches!(
-            parse_uci_go_commmand("go movetime 10000"),
-            Ok(UciGoCommand {
-                mode: GoMode::MoveTime(_),
-                ..
-            })
-        ));
-        assert!(matches!(
-            parse_uci_go_commmand("go infinite"),
-            Ok(UciGoCommand {
-                mode: GoMode::Infinite,
-                ..
-            })
+            parse_uci_go_command("go infinite", &mut board),
+            Ok(UciGoCommand { infinite: true, .. })
         ))
     }
 }

@@ -5,6 +5,7 @@ mod evaluation;
 mod fen_parser;
 mod helpers;
 mod history;
+mod init;
 mod king_attack_table;
 mod knight_attack_table;
 pub mod messaging;

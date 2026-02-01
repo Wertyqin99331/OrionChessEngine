@@ -1,14 +1,18 @@
 use std::sync::atomic::Ordering;
 
+use rand::Rng;
+
 use crate::{
     board::Board,
     enums::{Piece, Side},
     helpers,
     move_generator::MoveBuffer,
-    move_ordering, searching,
+    move_ordering,
+    searching::{self, SearchState},
 };
 
 pub(crate) const MATE_EVALUATION: i32 = 30_000;
+pub(crate) const RANDOM_BONUS: u32 = 15;
 
 mod piece_scores {
 
@@ -190,6 +194,9 @@ pub(crate) fn evalute(board: &Board, side: Side) -> i32 {
         }
     }
 
+    let mut rng = rand::rng();
+    score += rng.random_range(-(RANDOM_BONUS as i32)..RANDOM_BONUS as i32);
+
     return if side == Side::White { score } else { -score };
 }
 
@@ -199,6 +206,7 @@ pub(crate) fn quiescence_search(
     beta: i32,
     bufs: &mut [MoveBuffer],
     ply: u32,
+    search_state: &SearchState,
 ) -> i32 {
     searching::NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
 
@@ -214,11 +222,11 @@ pub(crate) fn quiescence_search(
             return -MATE_EVALUATION + ply as i32;
         }
 
-        move_ordering::sort_moves(cur_buf, ply, true);
+        move_ordering::sort_moves(cur_buf, ply, false, false, search_state);
 
         for mv in cur_buf.iter().copied() {
             board.make_move(mv);
-            let score = -quiescence_search(board, -beta, -alpha, rest_bufs, ply + 1);
+            let score = -quiescence_search(board, -beta, -alpha, rest_bufs, ply + 1, search_state);
             board.unmake_move();
 
             if score >= beta {
@@ -244,11 +252,11 @@ pub(crate) fn quiescence_search(
     }
 
     board.generate_legal_captures(moving_side, cur_buf);
-    move_ordering::sort_moves(cur_buf, ply, true);
+    move_ordering::sort_moves(cur_buf, ply, false, false, search_state);
 
     for mv in cur_buf.iter().copied() {
         board.make_move(mv);
-        let score = -quiescence_search(board, -beta, -alpha, rest_bufs, ply + 1);
+        let score = -quiescence_search(board, -beta, -alpha, rest_bufs, ply + 1, search_state);
         board.unmake_move();
 
         if score >= beta {
@@ -279,16 +287,4 @@ pub(crate) fn calc_phase(board: &Board) -> i32 {
 
     let ph = n + b + 2 * r + 4 * q;
     ph.clamp(0, 24)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_evaluate_function() {
-        let board = Board::get_start_position();
-
-        assert_eq!(0, evalute(&board, board.game_state.side_to_move));
-    }
 }

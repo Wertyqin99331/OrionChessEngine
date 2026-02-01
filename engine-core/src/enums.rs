@@ -325,6 +325,10 @@ impl Move {
         matches!(self, Move::Normal { promo: Some(_), .. })
     }
 
+    pub(crate) fn is_quiet(&self) -> bool {
+        !self.is_capture() && !self.is_capture()
+    }
+
     pub(crate) fn get_castling_move(side: Side, castling_side: CastlingSide) -> Move {
         let (from, to) = CastlingSide::get_castling_positions(side, Piece::King, castling_side);
 

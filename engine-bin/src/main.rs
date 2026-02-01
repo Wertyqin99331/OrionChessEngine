@@ -39,13 +39,13 @@ fn main() {
             ping_id = ping_id.wrapping_add(1);
 
             engine_worker_handler
-                .engine_events_tx
+                .tx
                 .send(EngineEvent::Uci(UciCommand::Ping(id)))
                 .ok();
 
             loop {
                 match engine_worker_handler
-                    .engine_respones_rx
+                    .out_rx
                     .recv_timeout(Duration::from_millis(200))
                 {
                     Ok(EngineResponse::Pong(x)) if x == id => {
@@ -67,7 +67,7 @@ fn main() {
 
         if line == "ucinewgame" {
             engine_worker_handler
-                .engine_events_tx
+                .tx
                 .send(EngineEvent::Uci(UciCommand::NewGame))
                 .ok();
             continue;
@@ -75,7 +75,7 @@ fn main() {
 
         if line.starts_with("position ") {
             engine_worker_handler
-                .engine_events_tx
+                .tx
                 .send(EngineEvent::Uci(UciCommand::Position(line)))
                 .ok();
             continue;
@@ -83,7 +83,7 @@ fn main() {
 
         if line.starts_with("go") {
             engine_worker_handler
-                .engine_events_tx
+                .tx
                 .send(EngineEvent::Uci(UciCommand::Go(line)))
                 .ok();
             continue;
@@ -91,7 +91,7 @@ fn main() {
 
         if line == "stop" {
             let _ = engine_worker_handler
-                .engine_events_tx
+                .tx
                 .send(EngineEvent::Uci(UciCommand::Stop));
 
             continue;
@@ -99,7 +99,7 @@ fn main() {
 
         if line == "quit" {
             engine_worker_handler
-                .engine_events_tx
+                .tx
                 .send(EngineEvent::Uci(UciCommand::Quit))
                 .ok();
             break;

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::{
     chess_consts::{self, BOARD_SIZE},
     enums::{File, Piece, Rank, Side, Square},

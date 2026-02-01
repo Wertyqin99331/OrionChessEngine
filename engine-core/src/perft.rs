@@ -23,11 +23,13 @@ pub(crate) fn perft(board: &mut Board, depth: u32, ply: usize, bufs: &mut [MoveB
 
 #[cfg(test)]
 mod tests {
-    use crate::{chess_consts, fen_parser};
+    use crate::{chess_consts, fen_parser, init};
 
     use super::*;
 
     fn test_perft(fen_str: &str, expectations: &[(u32, u64)]) {
+        init::init_engine();
+
         let mut board = fen_parser::parse_fen_string(fen_str).unwrap();
 
         let mut bufs: Vec<MoveBuffer> = (0..chess_consts::MAX_PLY)
@@ -56,7 +58,7 @@ mod tests {
                 (2, 2039),
                 (3, 97_862),
                 (4, 4_085_603),
-                (5, 19_3690_690),
+                (5, 193_690_690),
                 // (6, 8_031_647_685),
             ],
         );
