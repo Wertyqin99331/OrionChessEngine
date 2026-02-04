@@ -1,2 +1,5 @@
 1. Bitboard repr
 2. Move generator
+
+bug pos - 2kr1b1r/3n2p1/1pQ4p/R1p3B1/8/1PN2P2/1PP2P1P/6K1 b - - 1 21
+three-fold pos - 8/5kp1/2r1pn2/1Np5/r1P2PP1/P1R2K2/8/4R3 b - - 0 43

@@ -73,6 +73,8 @@ pub(crate) fn parse_fen_string(fen: &str) -> ParseFenResult {
         parse_fn(&mut board, part)?;
     }
 
+    board.init_zobrist_key();
+
     Ok(board)
 }
 
@@ -227,13 +229,15 @@ fn parse_full_move_number(board: &mut Board, part: &str) -> ParseFenPartResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::helpers;
+    use crate::{helpers, init};
 
     use super::*;
 
     #[test]
     #[ignore]
     fn test_parse_fen_string() {
+        init::init_engine();
+
         let boards = [
             chess_consts::fen_strings::START_POS_FEN,
             chess_consts::fen_strings::EMPTY_BOARD_FEN,

@@ -2,6 +2,7 @@ use crate::{
     board::Board,
     enums::{CastlingSide, Move, MoveFlags, Piece, Side},
     history::HistoryEntry,
+    pawn_attack_table, zobrist_hashing,
 };
 
 impl Board {
@@ -14,6 +15,17 @@ impl Board {
         let moving_side = self.game_state.side_to_move;
         let opponent_side = moving_side.opposite();
 
+        if let Some(prev_ep_sq) = self.game_state.en_passant_square {
+            let attacks_bb = pawn_attack_table::get_pawn_attacks_mask(
+                self.game_state.side_to_move.opposite(),
+                prev_ep_sq,
+            );
+
+            if attacks_bb & self.get_bb(self.game_state.side_to_move, Piece::Pawn) != 0 {
+                self.game_state.zobrist_key ^=
+                    zobrist_hashing::get_enpassant_key(prev_ep_sq.file());
+            }
+        }
         self.game_state.en_passant_square = None;
 
         match mv {
@@ -49,6 +61,9 @@ impl Board {
                 }
 
                 // Updating castling rights
+                self.game_state.zobrist_key ^=
+                    zobrist_hashing::get_castling_key(self.game_state.castling_state);
+
                 if piece == Piece::King {
                     self.game_state.castling_state.remove_all(moving_side);
                 }
@@ -65,6 +80,9 @@ impl Board {
                         .remove_rook(opponent_side, to);
                 }
 
+                self.game_state.zobrist_key ^=
+                    zobrist_hashing::get_castling_key(self.game_state.castling_state);
+
                 // Update half-move clock
                 if piece == Piece::Pawn || captured.is_some() {
                     self.game_state.half_move_clock = 0;
@@ -76,6 +94,9 @@ impl Board {
                 side: castling_side,
                 ..
             } => {
+                self.game_state.zobrist_key ^=
+                    zobrist_hashing::get_castling_key(self.game_state.castling_state);
+
                 let (king_from_sq, king_to_sq) =
                     CastlingSide::get_castling_positions(moving_side, Piece::King, castling_side);
                 let (rook_from_sq, rook_to_sq) =
@@ -86,14 +107,24 @@ impl Board {
 
                 self.game_state.half_move_clock += 1;
                 self.game_state.castling_state.remove_all(moving_side);
+
+                self.game_state.zobrist_key ^=
+                    zobrist_hashing::get_castling_key(self.game_state.castling_state);
             }
+            Move::Null => {}
         }
 
         if moving_side == Side::Black {
             self.game_state.full_moves_count += 1;
         }
 
-        self.game_state.side_to_move = opponent_side;
+        self.change_side_to_move();
+
+        if zobrist_hashing::need_to_hash_enpassant(self) {
+            self.game_state.zobrist_key ^= zobrist_hashing::get_enpassant_key(
+                self.game_state.en_passant_square.unwrap().file(),
+            );
+        }
     }
 
     pub(crate) fn unmake_move(&mut self) {
@@ -104,8 +135,8 @@ impl Board {
 
         self.game_state = game_state;
 
-        let moving_side = self.game_state.side_to_move;
-        let opponent_side = moving_side.opposite();
+        let side_that_moved = self.game_state.side_to_move;
+        let opponent_side = side_that_moved.opposite();
 
         match mv {
             Move::Normal {
@@ -117,44 +148,41 @@ impl Board {
                 flags,
             } => {
                 let placed_piece = promo.unwrap_or(piece);
-                self.remove_piece(moving_side, placed_piece, to);
+                self.remove_piece_raw(side_that_moved, placed_piece, to);
 
-                self.add_piece(moving_side, piece, from);
+                self.add_piece_raw(side_that_moved, piece, from);
 
                 if let Some(captured_piece) = captured {
                     let captured_sq = if flags.contains(MoveFlags::EN_PASSANT) {
-                        to.backward(moving_side)
+                        to.backward(side_that_moved)
                     } else {
                         to
                     };
-                    self.add_piece(opponent_side, captured_piece, captured_sq);
+                    self.add_piece_raw(opponent_side, captured_piece, captured_sq);
                 }
             }
             Move::Castle {
                 side: castling_side,
                 ..
             } => {
-                let (king_from, king_to) =
-                    CastlingSide::get_castling_positions(moving_side, Piece::King, castling_side);
-                let (rook_from, rook_to) =
-                    CastlingSide::get_castling_positions(moving_side, Piece::Rook, castling_side);
+                let (king_from, king_to) = CastlingSide::get_castling_positions(
+                    side_that_moved,
+                    Piece::King,
+                    castling_side,
+                );
+                let (rook_from, rook_to) = CastlingSide::get_castling_positions(
+                    side_that_moved,
+                    Piece::Rook,
+                    castling_side,
+                );
 
-                self.remove_piece(moving_side, Piece::King, king_to);
-                self.remove_piece(moving_side, Piece::Rook, rook_to);
+                self.remove_piece_raw(side_that_moved, Piece::King, king_to);
+                self.remove_piece_raw(side_that_moved, Piece::Rook, rook_to);
 
-                self.add_piece(moving_side, Piece::King, king_from);
-                self.add_piece(moving_side, Piece::Rook, rook_from);
+                self.add_piece_raw(side_that_moved, Piece::King, king_from);
+                self.add_piece_raw(side_that_moved, Piece::Rook, rook_from);
             }
+            Move::Null => {}
         }
-    }
-
-    pub(crate) fn make_null_move(&mut self) {
-        self.game_state.side_to_move = self.game_state.side_to_move.opposite();
-        self.game_state.half_move_clock += 1;
-    }
-
-    pub(crate) fn unmake_null_move(&mut self) {
-        self.game_state.side_to_move = self.game_state.side_to_move.opposite();
-        self.game_state.half_move_clock -= 1;
     }
 }

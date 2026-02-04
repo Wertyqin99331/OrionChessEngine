@@ -18,4 +18,6 @@ mod perft;
 mod random_generator;
 pub mod searching;
 mod sliding_piece_attack_table;
+mod tt;
 pub mod uci;
+mod zobrist_hashing;

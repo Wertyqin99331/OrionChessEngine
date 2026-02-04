@@ -69,7 +69,8 @@ const ROOK_RELEVANT_BIT_COUNTS: [u8; chess_consts::SQUARES_COUNT] = {
 
 static BISHOP_MAGIC_NUMBERS: OnceLock<[u64; chess_consts::SQUARES_COUNT]> = OnceLock::new();
 
-static BISHOP_ATTACKS_TABLE: OnceLock<[[u64; 512]; chess_consts::SQUARES_COUNT]> = OnceLock::new();
+static BISHOP_ATTACKS_TABLE: OnceLock<Box<[[u64; 512]; chess_consts::SQUARES_COUNT]>> =
+    OnceLock::new();
 
 pub(crate) fn init_bishop_magics_attacks() {
     let mut magic_numbers = [0u64; chess_consts::SQUARES_COUNT];
@@ -88,7 +89,10 @@ pub(crate) fn init_bishop_magics_attacks() {
 
     BISHOP_MAGIC_NUMBERS.set(magic_numbers).ok();
 
-    let mut attacks_table = [[0; 512]; chess_consts::SQUARES_COUNT];
+    let flat: Box<[u64]> = vec![0u64; 512 * chess_consts::SQUARES_COUNT].into_boxed_slice();
+    let ptr = Box::into_raw(flat) as *mut [[u64; 512]; chess_consts::SQUARES_COUNT];
+    let mut attacks_table: Box<[[u64; 512]; chess_consts::SQUARES_COUNT]> =
+        unsafe { Box::from_raw(ptr) };
 
     for square in Square::all() {
         let sq_index = square.index() as usize;

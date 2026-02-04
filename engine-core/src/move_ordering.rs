@@ -21,11 +21,16 @@ pub(crate) fn score_move(
     mv: Move,
     ply: u32,
     sort_quiet_moves: bool,
-    use_pv: bool,
+    tt_move: Option<Move>,
     search_state: &SearchState,
 ) -> i32 {
-    if use_pv
-        && ply == 0
+    if let Some(tt_mv) = tt_move
+        && mv == tt_mv
+    {
+        return 250_000;
+    }
+
+    if ply == 0
         && let Some(pv_mv) = search_state.prev_pv_first_move
         && pv_mv == mv
     {
@@ -68,7 +73,7 @@ pub(crate) fn sort_moves(
     moves: &mut [Move],
     ply: u32,
     sort_quiet_moves: bool,
-    use_pv: bool,
+    tt_move: Option<Move>,
     search_state: &SearchState,
 ) {
     let n = moves.len();
@@ -79,7 +84,7 @@ pub(crate) fn sort_moves(
 
     let mut scores = [0i32; chess_consts::MOVES_BUF_SIZE];
     for i in 0..n {
-        scores[i] = score_move(moves[i], ply, sort_quiet_moves, use_pv, search_state);
+        scores[i] = score_move(moves[i], ply, sort_quiet_moves, tt_move, search_state);
     }
 
     for i in 1..n {

@@ -23,6 +23,11 @@ impl Side {
     }
 
     #[inline]
+    pub(crate) const fn index_usize(self) -> usize {
+        self.index() as usize
+    }
+
+    #[inline]
     pub(crate) const fn opposite(self) -> Side {
         match self {
             Self::White => Side::Black,
@@ -89,6 +94,11 @@ impl Square {
     }
 
     #[inline]
+    pub(crate) const fn index_usize(self) -> usize {
+        self.index() as usize
+    }
+
+    #[inline]
     pub(crate) const fn bit(self) -> u64 {
         1u64 << (self as u64)
     }
@@ -99,8 +109,8 @@ impl Square {
     }
 
     #[inline]
-    pub(crate) const fn file(self) -> Rank {
-        unsafe { Rank::from_u8_unchecked(self.index() % 8) }
+    pub(crate) const fn file(self) -> File {
+        unsafe { File::from_u8_unchecked(self.index() % 8) }
     }
 
     #[inline]
@@ -221,13 +231,23 @@ impl fmt::Display for Square {
 pub(crate) enum File { A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7 }
 
 impl File {
+    #[inline]
     pub(crate) const fn index(self) -> u8 {
         self as u8
     }
 
+    #[inline]
+    pub(crate) const fn index_usize(self) -> usize {
+        self.index() as usize
+    }
+
     #[allow(dead_code)]
-    pub(crate) const unsafe fn from_u8_unchecked(value: u8) -> Rank {
+    pub(crate) const unsafe fn from_u8_unchecked(value: u8) -> File {
         unsafe { std::mem::transmute(value) }
+    }
+
+    pub(crate) fn all() -> impl Iterator<Item = File> {
+        (0..8).map(|v| unsafe { File::from_u8_unchecked(v) })
     }
 }
 
@@ -257,6 +277,11 @@ impl Rank {
     pub(crate) const unsafe fn from_u8_unchecked(value: u8) -> Rank {
         unsafe { std::mem::transmute(value) }
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn all() -> impl Iterator<Item = Rank> {
+        (0..8).map(|v| unsafe { Rank::from_u8_unchecked(v) })
+    }
 }
 
 impl TryFrom<u8> for Rank {
@@ -280,8 +305,14 @@ impl Piece {
     pub(crate) const PROMOTION_PIECES: [Piece; 4] =
         [Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen];
 
+    #[inline(always)]
     pub(crate) const fn index(self) -> u8 {
         self as u8
+    }
+
+    #[inline(always)]
+    pub(crate) const fn index_usize(self) -> usize {
+        self.index() as usize
     }
 
     pub(crate) unsafe fn from_u8_unchecked(value: u8) -> Piece {
@@ -308,6 +339,7 @@ pub(crate) enum Move {
         to: Square,
         side: CastlingSide,
     },
+    Null,
 }
 
 impl Move {
@@ -343,6 +375,7 @@ impl Move {
         match self {
             Move::Normal { from, to, .. } => return (*from, *to),
             &Move::Castle { from, to, .. } => return (from, to),
+            &Move::Null => panic!("Can't call this method for null move"),
         }
     }
 }

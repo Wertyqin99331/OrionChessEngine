@@ -12,7 +12,9 @@ use crate::{
 };
 
 pub(crate) const MATE_EVALUATION: i32 = 30_000;
-pub(crate) const RANDOM_BONUS: u32 = 15;
+pub(crate) const MATE_SCORE: i32 = 29_000;
+#[allow(dead_code)]
+pub(crate) const RANDOM_BONUS: u32 = 10;
 
 mod piece_scores {
 
@@ -222,7 +224,7 @@ pub(crate) fn quiescence_search(
             return -MATE_EVALUATION + ply as i32;
         }
 
-        move_ordering::sort_moves(cur_buf, ply, false, false, search_state);
+        move_ordering::sort_moves(cur_buf, ply, false, None, search_state);
 
         for mv in cur_buf.iter().copied() {
             board.make_move(mv);
@@ -252,7 +254,7 @@ pub(crate) fn quiescence_search(
     }
 
     board.generate_legal_captures(moving_side, cur_buf);
-    move_ordering::sort_moves(cur_buf, ply, false, false, search_state);
+    move_ordering::sort_moves(cur_buf, ply, false, None, search_state);
 
     for mv in cur_buf.iter().copied() {
         board.make_move(mv);

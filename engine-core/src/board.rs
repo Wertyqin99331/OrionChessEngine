@@ -9,6 +9,7 @@ use crate::{
     knight_attack_table::get_knight_attacks_mask,
     pawn_attack_table::get_pawn_attacks_mask,
     sliding_piece_attack_table::{get_bishop_attacks_mask, get_rook_attacks_mask},
+    zobrist_hashing,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -37,6 +38,7 @@ pub(crate) struct GameState {
     pub(crate) castling_state: CastlingState,
     pub(crate) half_move_clock: u8,
     pub(crate) full_moves_count: u16,
+    pub(crate) zobrist_key: u64,
 }
 
 impl Board {
@@ -148,22 +150,86 @@ impl Board {
         fen_parser::parse_fen_string(chess_consts::fen_strings::START_POS_FEN).unwrap()
     }
 
-    pub(crate) fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
+    pub(crate) fn add_piece_raw(&mut self, side: Side, piece: Piece, square: Square) {
         let mask = square.bit();
         *self.get_bb_mut(side, piece) |= mask;
         *self.get_occupancy_bb_mut(side) |= mask;
         self.global_occupancy |= mask;
     }
 
-    pub(crate) fn remove_piece(&mut self, side: Side, piece: Piece, square: Square) {
+    pub(crate) fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        self.add_piece_raw(side, piece, square);
+
+        self.game_state.zobrist_key ^= zobrist_hashing::get_piece_key(side, piece, square);
+    }
+
+    pub(crate) fn remove_piece_raw(&mut self, side: Side, piece: Piece, square: Square) {
         let mask = square.bit();
         *self.get_bb_mut(side, piece) &= !mask;
         *self.get_occupancy_bb_mut(side) &= !mask;
         self.global_occupancy &= !mask;
     }
+
+    pub(crate) fn remove_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        self.remove_piece_raw(side, piece, square);
+
+        self.game_state.zobrist_key ^= zobrist_hashing::get_piece_key(side, piece, square);
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn move_piece_raw(&mut self, side: Side, piece: Piece, from: Square, to: Square) {
+        self.remove_piece_raw(side, piece, from);
+        self.add_piece_raw(side, piece, to);
+    }
+
     pub(crate) fn move_piece(&mut self, side: Side, piece: Piece, from: Square, to: Square) {
         self.remove_piece(side, piece, from);
         self.add_piece(side, piece, to);
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn change_side_to_move_raw(&mut self) {
+        self.game_state.side_to_move = self.game_state.side_to_move.opposite();
+    }
+
+    pub(crate) fn change_side_to_move(&mut self) {
+        self.game_state.side_to_move = self.game_state.side_to_move.opposite();
+
+        self.game_state.zobrist_key ^= zobrist_hashing::get_side_key();
+    }
+
+    pub(crate) fn init_zobrist_key(&mut self) {
+        let mut key = 0u64;
+
+        for side in Side::all() {
+            for piece in Piece::all() {
+                let piece_bb = self.get_bb(side, piece);
+
+                for sq in helpers::get_squares_iter(piece_bb) {
+                    key ^= zobrist_hashing::get_piece_key(side, piece, sq);
+                }
+            }
+        }
+
+        if self.game_state.side_to_move == Side::Black {
+            key ^= zobrist_hashing::get_side_key();
+        }
+
+        key ^= zobrist_hashing::get_castling_key(self.game_state.castling_state);
+
+        if zobrist_hashing::need_to_hash_enpassant(self) {
+            key ^= zobrist_hashing::get_enpassant_key(
+                self.game_state.en_passant_square.unwrap().file(),
+            );
+        }
+
+        self.game_state.zobrist_key = key;
+    }
+
+    pub(crate) fn is_repetition(&self) -> bool {
+        self.history
+            .get_repetition_count(self.game_state.zobrist_key, self.game_state.half_move_clock)
+            >= 2
     }
 }
 

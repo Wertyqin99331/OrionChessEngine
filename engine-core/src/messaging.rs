@@ -10,6 +10,7 @@ use crate::{
     init::init_engine,
     out,
     searching::{self, SearchBestMoveLimits, SearchState, StopToken},
+    tt::TranspositionTable,
     uci::{self, TimeControl, UciGoCommand},
 };
 
@@ -36,12 +37,18 @@ pub enum SearchEvent {
     },
     Info {
         depth: u32,
-        score: i32,
+        eval: SearchEval,
         nodes: usize,
         time: u128,
         nps: usize,
         pv_string: String,
     },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SearchEval {
+    Score(i32),
+    Mate(i32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +82,7 @@ fn worker_loop(
     ev_rx: mpsc::Receiver<EngineEvent>,
     out_tx: mpsc::Sender<EngineResponse>,
 ) {
-    let mut board: Board = Board::get_start_position();
+    let mut board: Option<Board> = None;
     let search_worker = SearchWorker::start(ev_tx, StopToken::new());
 
     let mut current_search_id = 0;
@@ -96,13 +103,13 @@ fn worker_loop(
                 current_search_id += 1;
                 search_worker.stop();
 
-                board = Board::get_start_position();
+                board = Some(Board::get_start_position());
             }
             EngineEvent::Uci(UciCommand::Position(pos_cmd)) => {
                 search_worker.stop();
 
                 match uci::parse_uci_position_command(&pos_cmd) {
-                    Ok(b) => board = b,
+                    Ok(b) => board = Some(b),
                     Err(_) => {
                         out::write_line("bestmove 0000");
                     }
@@ -112,7 +119,7 @@ fn worker_loop(
                 current_search_id += 1;
                 search_worker.stop();
 
-                let mut b = board.clone();
+                let mut b = board.clone().unwrap_or_else(Board::get_start_position);
 
                 let go_cmd = match uci::parse_uci_go_command(&go_cmd, &mut b) {
                     Ok(cmd) => cmd,
@@ -142,7 +149,7 @@ fn worker_loop(
             }
             EngineEvent::Search(SearchEvent::Info {
                 depth,
-                score,
+                eval,
                 nodes,
                 time,
                 nps,
@@ -150,7 +157,10 @@ fn worker_loop(
             }) => {
                 let mut info = format!("info depth {depth}");
 
-                info.push_str(&format!(" score cp {score}"));
+                match eval {
+                    SearchEval::Score(score) => info.push_str(&format!(" score cp {score}")),
+                    SearchEval::Mate(distance) => info.push_str(&format!(" score mate {distance}")),
+                }
 
                 info.push_str(&format!(" nodes {nodes}"));
 
@@ -220,6 +230,7 @@ impl SearchWorker {
         stop: StopToken,
     ) {
         let mut search_state = SearchState::new();
+        let mut tt = TranspositionTable::new(1);
 
         loop {
             match rx.recv() {
@@ -252,6 +263,7 @@ impl SearchWorker {
                         &mut board,
                         depth,
                         &mut search_state,
+                        &mut tt,
                         limits,
                         &out_tx,
                         &stop,
@@ -263,7 +275,7 @@ impl SearchWorker {
                                 mv: "0000".to_string(),
                             }))
                             .ok();
-                        return;
+                        continue;
                     };
 
                     let mv_str = uci::serialize_move_to_uci_str(mv);

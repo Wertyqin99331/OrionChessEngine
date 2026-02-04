@@ -27,6 +27,7 @@ pub(crate) fn serialize_move_to_uci_str(mv: Move) -> String {
             let mv_str = format!("{from}{to}");
             return mv_str;
         }
+        Move::Null => panic!("Can't serialize null move"),
     }
 }
 
@@ -262,7 +263,7 @@ pub(crate) struct TimeControl {
 mod tests {
     use crate::{
         enums::{CastlingSide, MoveFlags, Side, Square},
-        fen_parser,
+        fen_parser, init,
     };
 
     use super::*;
@@ -325,6 +326,8 @@ mod tests {
 
     #[test]
     fn test_parsing_moves_normal_promo_moves() {
+        init::init_engine();
+
         let mut board = Board::get_start_position();
 
         let mv = parse_uci_move("a2a3", &mut board);
@@ -438,6 +441,8 @@ mod tests {
 
     #[test]
     fn test_parse_castling_moves() {
+        init::init_engine();
+
         let mut board = fen_parser::parse_fen_string("8/8/8/8/8/8/8/R3K2R w KQ - 0 1").unwrap();
 
         let mv = parse_uci_move("e1g1", &mut board);
@@ -475,6 +480,8 @@ mod tests {
 
     #[test]
     fn test_parse_position_function() {
+        init::init_engine();
+
         assert!(matches!(
             parse_uci_position_command("position startpos"),
             Ok(_)
@@ -524,6 +531,8 @@ mod tests {
 
     #[test]
     fn test_parse_uci_go_command() {
+        init::init_engine();
+
         let mut board = Board::get_start_position();
 
         assert!(parse_uci_go_command("go", &mut board).is_ok());
