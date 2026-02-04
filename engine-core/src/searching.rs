@@ -17,7 +17,7 @@ use crate::{
     move_generator::MoveBuffer,
     move_ordering,
     tt::{ProbeResult, TTEntryBound, TranspositionTable},
-    uci,
+    uci, zobrist_hashing,
 };
 
 const INFINITY: i32 = 1_000_000_00;
@@ -103,7 +103,15 @@ pub(crate) fn negamax_ab(
         beta,
     );
 
-    if let ProbeResult::Hit { score, mv, .. } = probe_result {
+    let current_rep_count = board.history.get_repetition_count(
+        board.game_state.zobrist_key,
+        board.game_state.half_move_clock,
+    );
+    let is_draw_candidate = current_rep_count >= 1 || board.game_state.half_move_clock >= 98;
+
+    if let ProbeResult::Hit { score, mv, .. } = probe_result
+        && !is_draw_candidate
+    {
         if let Some(tt_move) = mv {
             board.make_move(tt_move);
 
@@ -128,7 +136,16 @@ pub(crate) fn negamax_ab(
     let is_in_check = board.is_in_check(side_to_move);
 
     if depth >= NULL_MOVE_PRUNING_DEPTH as u32 && !is_in_check {
-        board.make_move(Move::Null);
+        let prev_state = board.game_state;
+
+        if zobrist_hashing::need_to_hash_enpassant(board) {
+            board.game_state.zobrist_key ^= zobrist_hashing::get_enpassant_key(
+                board.game_state.en_passant_square.unwrap().file(),
+            );
+        }
+
+        board.change_side_to_move();
+        board.game_state.en_passant_square = None;
 
         let null_score = match negamax_ab(
             board,
@@ -144,12 +161,13 @@ pub(crate) fn negamax_ab(
         ) {
             NegamaxResult::Completed(score) => -score,
             NegamaxResult::Stopped => {
-                board.unmake_move();
+                board.game_state = prev_state;
+
                 return NegamaxResult::Stopped;
             }
         };
 
-        board.unmake_move();
+        board.game_state = prev_state;
 
         if null_score >= beta {
             tt.store(
@@ -158,7 +176,7 @@ pub(crate) fn negamax_ab(
                 ply as u8,
                 null_score as i16,
                 TTEntryBound::FailHigh,
-                Some(Move::Null),
+                None,
             );
 
             return NegamaxResult::Completed(null_score);
@@ -343,7 +361,15 @@ pub(crate) fn search_best_move(
 
     let probe_result = tt.probe(board.game_state.zobrist_key, depth as u8, 0, alpha, beta);
 
-    if let ProbeResult::Hit { score, mv, bound } = probe_result {
+    let current_rep_count = board.history.get_repetition_count(
+        board.game_state.zobrist_key,
+        board.game_state.half_move_clock,
+    );
+    let is_draw_candidate = current_rep_count >= 1 || board.game_state.half_move_clock >= 98;
+
+    if let ProbeResult::Hit { score, mv, bound } = probe_result
+        && !is_draw_candidate
+    {
         if let Some(tt_move) = mv {
             board.make_move(tt_move);
 

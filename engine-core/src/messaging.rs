@@ -14,6 +14,8 @@ use crate::{
     uci::{self, TimeControl, UciGoCommand},
 };
 
+const DEFAULT_TT_SIZE: usize = 128;
+
 pub enum EngineEvent {
     Uci(UciCommand),
     Search(SearchEvent),
@@ -230,7 +232,7 @@ impl SearchWorker {
         stop: StopToken,
     ) {
         let mut search_state = SearchState::new();
-        let mut tt = TranspositionTable::new(1);
+        let mut tt = TranspositionTable::new(DEFAULT_TT_SIZE);
 
         loop {
             match rx.recv() {

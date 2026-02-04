@@ -27,7 +27,6 @@ pub(crate) fn serialize_move_to_uci_str(mv: Move) -> String {
             let mv_str = format!("{from}{to}");
             return mv_str;
         }
-        Move::Null => panic!("Can't serialize null move"),
     }
 }
 

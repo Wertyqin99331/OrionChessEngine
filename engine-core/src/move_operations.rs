@@ -2,7 +2,7 @@ use crate::{
     board::Board,
     enums::{CastlingSide, Move, MoveFlags, Piece, Side},
     history::HistoryEntry,
-    pawn_attack_table, zobrist_hashing,
+    zobrist_hashing,
 };
 
 impl Board {
@@ -15,16 +15,10 @@ impl Board {
         let moving_side = self.game_state.side_to_move;
         let opponent_side = moving_side.opposite();
 
-        if let Some(prev_ep_sq) = self.game_state.en_passant_square {
-            let attacks_bb = pawn_attack_table::get_pawn_attacks_mask(
-                self.game_state.side_to_move.opposite(),
-                prev_ep_sq,
+        if zobrist_hashing::need_to_hash_enpassant(self) {
+            self.game_state.zobrist_key ^= zobrist_hashing::get_enpassant_key(
+                self.game_state.en_passant_square.unwrap().file(),
             );
-
-            if attacks_bb & self.get_bb(self.game_state.side_to_move, Piece::Pawn) != 0 {
-                self.game_state.zobrist_key ^=
-                    zobrist_hashing::get_enpassant_key(prev_ep_sq.file());
-            }
         }
         self.game_state.en_passant_square = None;
 
@@ -111,7 +105,6 @@ impl Board {
                 self.game_state.zobrist_key ^=
                     zobrist_hashing::get_castling_key(self.game_state.castling_state);
             }
-            Move::Null => {}
         }
 
         if moving_side == Side::Black {
@@ -182,7 +175,6 @@ impl Board {
                 self.add_piece_raw(side_that_moved, Piece::King, king_from);
                 self.add_piece_raw(side_that_moved, Piece::Rook, rook_from);
             }
-            Move::Null => {}
         }
     }
 }

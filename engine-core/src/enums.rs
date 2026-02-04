@@ -339,7 +339,6 @@ pub(crate) enum Move {
         to: Square,
         side: CastlingSide,
     },
-    Null,
 }
 
 impl Move {
@@ -375,7 +374,6 @@ impl Move {
         match self {
             Move::Normal { from, to, .. } => return (*from, *to),
             &Move::Castle { from, to, .. } => return (from, to),
-            &Move::Null => panic!("Can't call this method for null move"),
         }
     }
 }
