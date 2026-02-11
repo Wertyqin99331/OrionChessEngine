@@ -17,6 +17,7 @@ mod pawn_attack_table;
 mod perft;
 mod random_generator;
 pub mod searching;
+mod see;
 mod sliding_piece_attack_table;
 mod tt;
 pub mod uci;

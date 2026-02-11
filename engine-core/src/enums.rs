@@ -99,7 +99,7 @@ impl Square {
     }
 
     #[inline]
-    pub(crate) const fn bit(self) -> u64 {
+    pub(crate) const fn get_bb(self) -> u64 {
         1u64 << (self as u64)
     }
 
@@ -111,6 +111,15 @@ impl Square {
     #[inline]
     pub(crate) const fn file(self) -> File {
         unsafe { File::from_u8_unchecked(self.index() % 8) }
+    }
+
+    #[inline]
+    pub(crate) const fn color(self) -> Side {
+        if self.index() % 2 == 0 {
+            Side::Black
+        } else {
+            Side::White
+        }
     }
 
     #[inline]
@@ -142,6 +151,29 @@ impl Square {
         match side {
             Side::White => self.rank() == Rank::R6,
             Side::Black => self.rank() == Rank::R3,
+        }
+    }
+
+    pub(crate) fn forward(self, side: Side) -> Square {
+        match side {
+            Side::White => {
+                if self.rank() == Rank::R8 {
+                    panic!("Can't go forward for white from square on rank 8");
+                }
+
+                return unsafe {
+                    Square::from_u8_unchecked(self.index() + chess_consts::BOARD_SIZE as u8)
+                };
+            }
+            Side::Black => {
+                if self.rank() == Rank::R1 {
+                    panic!("Can't go forward from black from square on rank 1");
+                }
+
+                return unsafe {
+                    Square::from_u8_unchecked(self.index() - chess_consts::BOARD_SIZE as u8)
+                };
+            }
         }
     }
 
@@ -225,7 +257,7 @@ impl fmt::Display for Square {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) enum File { A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7 }
@@ -264,7 +296,7 @@ impl TryFrom<u8> for File {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[allow(dead_code)]
 #[rustfmt::skip]
 pub(crate) enum Rank { R1=0, R2=1, R3=2, R4=3, R5=4, R6=5, R7=6, R8=7 }
@@ -272,6 +304,11 @@ pub(crate) enum Rank { R1=0, R2=1, R3=2, R4=3, R5=4, R6=5, R7=6, R8=7 }
 impl Rank {
     pub(crate) const fn index(self) -> u8 {
         self as u8
+    }
+
+    #[inline]
+    pub(crate) const fn index_usize(self) -> usize {
+        self.index() as usize
     }
 
     pub(crate) const unsafe fn from_u8_unchecked(value: u8) -> Rank {
@@ -352,12 +389,26 @@ impl Move {
         )
     }
 
+    pub(crate) fn get_captured(&self) -> Option<Piece> {
+        match self {
+            Move::Normal { captured, .. } => *captured,
+            Move::Castle { .. } => None,
+        }
+    }
+
     pub(crate) fn is_promo(&self) -> bool {
         matches!(self, Move::Normal { promo: Some(_), .. })
     }
 
+    pub(crate) fn get_promoted(&self) -> Option<Piece> {
+        match self {
+            Move::Normal { promo, .. } => *promo,
+            Move::Castle { .. } => None,
+        }
+    }
+
     pub(crate) fn is_quiet(&self) -> bool {
-        !self.is_capture() && !self.is_capture()
+        !self.is_capture()
     }
 
     pub(crate) fn get_castling_move(side: Side, castling_side: CastlingSide) -> Move {
@@ -376,6 +427,36 @@ impl Move {
             &Move::Castle { from, to, .. } => return (from, to),
         }
     }
+
+    pub(crate) fn get_captured_piece_sq(&self, moving_side: Side) -> Option<Square> {
+        match self {
+            Move::Normal {
+                to,
+                captured,
+                flags,
+                ..
+            } => {
+                if captured.is_none() {
+                    return None;
+                }
+
+                let captured_piece_sq = if flags.contains(MoveFlags::EN_PASSANT) {
+                    to.backward(moving_side)
+                } else {
+                    *to
+                };
+                Some(captured_piece_sq)
+            }
+            Move::Castle { .. } => None,
+        }
+    }
+
+    pub(crate) fn get_moving_piece(&self) -> Option<Piece> {
+        match self {
+            Move::Normal { piece, .. } => Some(*piece),
+            Move::Castle { .. } => None,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -385,23 +466,23 @@ pub(crate) enum CastlingSide {
 }
 
 impl CastlingSide {
-    pub(crate) const WHITE_KING_SIDE_EMPTY_MASK: u64 = Square::F1.bit() | Square::G1.bit();
+    pub(crate) const WHITE_KING_SIDE_EMPTY_MASK: u64 = Square::F1.get_bb() | Square::G1.get_bb();
     pub(crate) const WHITE_KING_SIDE_NOT_ATTACKED_MASK: u64 =
-        CastlingSide::WHITE_KING_SIDE_EMPTY_MASK | Square::E1.bit();
+        CastlingSide::WHITE_KING_SIDE_EMPTY_MASK | Square::E1.get_bb();
 
     pub(crate) const WHITE_QUEEN_SIDE_EMPTY_MASK: u64 =
-        Square::B1.bit() | Square::C1.bit() | Square::D1.bit();
+        Square::B1.get_bb() | Square::C1.get_bb() | Square::D1.get_bb();
     pub(crate) const WHITE_QUEEN_SIDE_NOT_ATTACKED_MASK: u64 =
-        Square::C1.bit() | Square::D1.bit() | Square::E1.bit();
+        Square::C1.get_bb() | Square::D1.get_bb() | Square::E1.get_bb();
 
-    pub(crate) const BLACK_KING_SIDE_EMPTY_MASK: u64 = Square::F8.bit() | Square::G8.bit();
+    pub(crate) const BLACK_KING_SIDE_EMPTY_MASK: u64 = Square::F8.get_bb() | Square::G8.get_bb();
     pub(crate) const BLACK_KING_SIDE_NOT_ATTACKED_MASK: u64 =
-        CastlingSide::BLACK_KING_SIDE_EMPTY_MASK | Square::E8.bit();
+        CastlingSide::BLACK_KING_SIDE_EMPTY_MASK | Square::E8.get_bb();
 
     pub(crate) const BLACK_QUEEN_SIDE_EMPTY_MASK: u64 =
-        Square::B8.bit() | Square::C8.bit() | Square::D8.bit();
+        Square::B8.get_bb() | Square::C8.get_bb() | Square::D8.get_bb();
     pub(crate) const BLACK_QUEEN_SIDE_NOT_ATTACKED_MASK: u64 =
-        Square::C8.bit() | Square::D8.bit() | Square::E8.bit();
+        Square::C8.get_bb() | Square::D8.get_bb() | Square::E8.get_bb();
 
     pub(crate) fn get_castling_positions(
         side: Side,
@@ -454,9 +535,9 @@ mod tests {
 
     #[test]
     fn square_bit_tests() {
-        assert_eq!(Square::A1.bit(), 1);
-        assert_eq!(Square::H1.bit(), 128);
-        assert_eq!(Square::H8.bit(), 1u64 << 63);
+        assert_eq!(Square::A1.get_bb(), 1);
+        assert_eq!(Square::H1.get_bb(), 128);
+        assert_eq!(Square::H8.get_bb(), 1u64 << 63);
     }
 
     #[test]

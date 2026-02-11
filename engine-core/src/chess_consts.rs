@@ -1,9 +1,12 @@
 use crate::{
+    chess_consts,
     enums::{File, Rank},
     helpers,
 };
 
 pub(crate) const SIDES_COUNT: usize = 2;
+// Midgame and endgame
+pub(crate) const PHASES_COUNT: usize = 2;
 pub(crate) const BOARD_SIZE: usize = 8;
 pub(crate) const SQUARES_COUNT: usize = BOARD_SIZE * BOARD_SIZE;
 pub(crate) const PIECE_TYPES_COUNT: usize = 6;
@@ -13,6 +16,40 @@ pub(crate) const MAX_PLY: usize = 128;
 pub(crate) const MAX_HALF_MOVES_COUNT: u8 = 100;
 
 pub(crate) const EMPTY_BB: u64 = 0u64;
+
+pub(crate) const RANK_MASKS: [u64; chess_consts::BOARD_SIZE] = const {
+    let mut masks = [0; chess_consts::BOARD_SIZE];
+
+    let mut rank = 0;
+    while rank < chess_consts::BOARD_SIZE {
+        masks[rank] = helpers::rank_mask(unsafe { Rank::from_u8_unchecked(rank as u8) });
+
+        rank += 1;
+    }
+
+    masks
+};
+
+pub(crate) const fn get_rank_mask(rank: Rank) -> u64 {
+    RANK_MASKS[rank.index_usize()]
+}
+
+pub(crate) const FILE_MASKS: [u64; chess_consts::BOARD_SIZE] = const {
+    let mut masks = [0; chess_consts::BOARD_SIZE];
+
+    let mut file = 0;
+    while file < chess_consts::BOARD_SIZE {
+        masks[file] = helpers::file_mask(unsafe { File::from_u8_unchecked(file as u8) });
+
+        file += 1;
+    }
+
+    masks
+};
+
+pub(crate) const fn get_file_mask(file: File) -> u64 {
+    FILE_MASKS[file.index_usize()]
+}
 
 #[allow(dead_code)]
 pub(crate) mod fen_strings {

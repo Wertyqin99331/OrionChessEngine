@@ -1,6 +1,6 @@
 use crate::{
     board::Board,
-    chess_consts,
+    chess_consts::{self, NOT_A_FILE_BB, NOT_H_FILE_BB},
     enums::{CastlingSide, Move, MoveFlags, Piece, Rank, Side, Square},
     helpers,
     king_attack_table::get_king_attacks_mask,
@@ -94,6 +94,24 @@ impl Board {
 
         buf
     }
+
+    pub(crate) fn generate_pawn_attacks_bb(&self, side: Side) -> u64 {
+        let mut attacks = 0u64;
+        let pawns_bb = self.get_bb(side, Piece::Pawn);
+
+        match side {
+            Side::White => {
+                attacks |= (pawns_bb & NOT_A_FILE_BB) << 7;
+                attacks |= (pawns_bb & NOT_H_FILE_BB) << 9;
+            }
+            Side::Black => {
+                attacks |= (pawns_bb & NOT_A_FILE_BB) >> 7;
+                attacks |= (pawns_bb & NOT_H_FILE_BB) >> 9;
+            }
+        }
+
+        attacks
+    }
 }
 
 fn generate_pseudo_legal_pawn_moves(
@@ -177,7 +195,7 @@ fn generate_pseudo_legal_pawn_moves(
     let en_passant_sq_bb = if let Some(en_passant_sq) = board.game_state.en_passant_square
         && Square::is_en_passant_target_for(en_passant_sq, side)
     {
-        en_passant_sq.bit()
+        en_passant_sq.get_bb()
     } else {
         chess_consts::EMPTY_BB
     };
@@ -398,7 +416,11 @@ fn generate_pseudo_legal_king_moves(
     generate_leaper_pseudo_legal_moves(board, mode, side, Piece::King, get_king_attacks_mask, buf)
 }
 
-fn generate_castling_moves(board: &Board, _: MoveGenMode, side: Side, buf: &mut MoveBuffer) {
+fn generate_castling_moves(board: &Board, mode: MoveGenMode, side: Side, buf: &mut MoveBuffer) {
+    if mode == MoveGenMode::CapturesOnly {
+        return;
+    }
+
     let castlings = board.game_state.castling_state.get_castlings(side);
 
     for castling in castlings {

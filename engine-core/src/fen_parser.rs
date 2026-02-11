@@ -86,7 +86,7 @@ fn parse_pieces(board: &mut Board, part: &str) -> ParseFenPartResult {
         let mut set_piece = |side: Side, piece: Piece| {
             let square = Square::try_from(rank * chess_consts::BOARD_SIZE as u8 + file)
                 .map_err(|_| ParseFenError::PiecesParse)?;
-            let square_bb = square.bit();
+            let square_bb = square.get_bb();
             *board.get_bb_mut(side, piece) = board.get_bb(side, piece) | square_bb;
             file += 1;
             Ok(())

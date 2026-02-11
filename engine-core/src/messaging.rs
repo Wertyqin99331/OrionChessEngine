@@ -14,7 +14,7 @@ use crate::{
     uci::{self, TimeControl, UciGoCommand},
 };
 
-const DEFAULT_TT_SIZE: usize = 128;
+const DEFAULT_TT_SIZE: usize = 64;
 
 pub enum EngineEvent {
     Uci(UciCommand),

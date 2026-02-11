@@ -3,6 +3,7 @@
 use crate::{
     chess_consts::{self, BOARD_SIZE},
     enums::{File, Piece, Rank, Side, Square},
+    king_attack_table, knight_attack_table, pawn_attack_table, sliding_piece_attack_table,
 };
 
 /// Prints the bitboard to stdout
@@ -115,7 +116,7 @@ pub fn squares_mask(squares: impl IntoIterator<Item = Square>) -> u64 {
     let mut bb = 0;
 
     for sq in squares.into_iter() {
-        bb |= sq.bit();
+        bb |= sq.get_bb();
     }
 
     bb
@@ -166,6 +167,17 @@ pub(crate) fn get_ascii_piece_char(side: Side, piece: Piece) -> char {
         [(side.index() * chess_consts::PIECE_TYPES_COUNT as u8 + piece.index()) as usize]
 }
 
+pub(crate) fn get_attacks_mask(side: Side, piece: Piece, sq: Square, occupancy: u64) -> u64 {
+    match piece {
+        Piece::Pawn => pawn_attack_table::get_pawn_attacks_mask(side, sq),
+        Piece::Knight => knight_attack_table::get_knight_attacks_mask(sq),
+        Piece::Bishop => sliding_piece_attack_table::get_bishop_attacks_mask(sq, occupancy),
+        Piece::Rook => sliding_piece_attack_table::get_rook_attacks_mask(sq, occupancy),
+        Piece::Queen => sliding_piece_attack_table::get_queen_attacks_mask(sq, occupancy),
+        Piece::King => king_attack_table::get_king_attacks_mask(sq),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::enums::Square;
@@ -175,9 +187,9 @@ mod tests {
     #[test]
     #[ignore]
     fn print_bitboard_test() {
-        let a1_bitboard = Square::A1.bit();
-        let a2_bitboard = Square::A2.bit();
-        let some_bitboard = Square::A1.bit() | Square::H1.bit() | Square::E4.bit();
+        let a1_bitboard = Square::A1.get_bb();
+        let a2_bitboard = Square::A2.get_bb();
+        let some_bitboard = Square::A1.get_bb() | Square::H1.get_bb() | Square::E4.get_bb();
 
         for bb in [a1_bitboard, a2_bitboard, some_bitboard] {
             print_bitboard(bb);
@@ -187,11 +199,11 @@ mod tests {
 
     #[test]
     fn get_bit_tests() {
-        let a1_bitboard = Square::A1.bit();
+        let a1_bitboard = Square::A1.get_bb();
         assert_eq!(is_bit_set(a1_bitboard, Square::A1), true);
         assert_eq!(is_bit_set(a1_bitboard, Square::A2), false);
 
-        let a2_bitboard = Square::A2.bit();
+        let a2_bitboard = Square::A2.get_bb();
         assert_eq!(is_bit_set(a2_bitboard, Square::A1), false);
         assert_eq!(is_bit_set(a2_bitboard, Square::A2), true);
     }
@@ -200,21 +212,25 @@ mod tests {
     fn set_bit_tests() {
         let zero_bb = 0;
 
-        assert!(set_bit(zero_bb, Square::A1) == Square::A1.bit());
-        assert!(set_bit(zero_bb, Square::E4) == Square::E4.bit());
+        assert!(set_bit(zero_bb, Square::A1) == Square::A1.get_bb());
+        assert!(set_bit(zero_bb, Square::E4) == Square::E4.get_bb());
 
-        assert!(set_bit(Square::E1.bit(), Square::F1) == Square::E1.bit() | Square::F1.bit());
+        assert!(
+            set_bit(Square::E1.get_bb(), Square::F1) == Square::E1.get_bb() | Square::F1.get_bb()
+        );
     }
 
     #[test]
     fn pop_bit_tests() {
-        assert!(pop_bit(Square::A1.bit(), Square::A1) == 0);
-        assert!(pop_bit(Square::A2.bit(), Square::A1) == Square::A2.bit());
+        assert!(pop_bit(Square::A1.get_bb(), Square::A1) == 0);
+        assert!(pop_bit(Square::A2.get_bb(), Square::A1) == Square::A2.get_bb());
     }
 
     #[test]
     fn flip_bit_tests() {
-        assert!(flip_bit(Square::A1.bit(), Square::A1) == 0);
-        assert!(flip_bit(Square::H8.bit(), Square::A1) == Square::A1.bit() | Square::H8.bit());
+        assert!(flip_bit(Square::A1.get_bb(), Square::A1) == 0);
+        assert!(
+            flip_bit(Square::H8.get_bb(), Square::A1) == Square::A1.get_bb() | Square::H8.get_bb()
+        );
     }
 }

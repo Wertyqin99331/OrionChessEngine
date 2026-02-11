@@ -15,7 +15,7 @@ use crate::{
     evaluation::{self},
     messaging::{EngineEvent, SearchEval, SearchEvent},
     move_generator::MoveBuffer,
-    move_ordering,
+    move_ordering, see,
     tt::{ProbeResult, TTEntryBound, TranspositionTable},
     uci, zobrist_hashing,
 };
@@ -83,15 +83,14 @@ pub(crate) fn negamax_ab(
         return NegamaxResult::Stopped;
     }
 
-    if board.game_state.half_move_clock >= 100 {
-        NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+    NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
+    search_state.pv_clear(ply);
 
+    if board.game_state.half_move_clock >= 100 {
         return NegamaxResult::Completed(0);
     }
 
     if board.is_repetition() {
-        NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
-
         return NegamaxResult::Completed(0);
     }
 
@@ -135,7 +134,10 @@ pub(crate) fn negamax_ab(
     let side_to_move = board.game_state.side_to_move;
     let is_in_check = board.is_in_check(side_to_move);
 
-    if depth >= NULL_MOVE_PRUNING_DEPTH as u32 && !is_in_check {
+    if depth >= NULL_MOVE_PRUNING_DEPTH as u32
+        && !is_in_check
+        && board.has_non_pawn_material(side_to_move)
+    {
         let prev_state = board.game_state;
 
         if zobrist_hashing::need_to_hash_enpassant(board) {
@@ -172,7 +174,7 @@ pub(crate) fn negamax_ab(
         if null_score >= beta {
             tt.store(
                 board.game_state.zobrist_key,
-                depth as u8,
+                (depth - 1 - NULL_MOVE_REDUCTION_FACTOR as u32) as u8,
                 ply as u8,
                 null_score as i16,
                 TTEntryBound::FailHigh,
@@ -188,8 +190,6 @@ pub(crate) fn negamax_ab(
     board.generate_all_legal_moves(side_to_move, cur);
 
     if cur.len() == 0 {
-        NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
-
         if board.is_in_check(side_to_move) {
             let mate_score = -evaluation::MATE_EVALUATION + ply as i32;
 
@@ -218,8 +218,7 @@ pub(crate) fn negamax_ab(
     }
 
     if depth == 0 {
-        let q_eval_score =
-            evaluation::quiescence_search(board, alpha, beta, bufs, ply, &search_state);
+        let q_eval_score = evaluation::q_search(board, alpha, beta, bufs, ply, &search_state);
 
         let tt_bound = if q_eval_score >= beta {
             TTEntryBound::FailHigh
@@ -241,15 +240,21 @@ pub(crate) fn negamax_ab(
         return NegamaxResult::Completed(q_eval_score);
     }
 
-    NODES_COUNTER.fetch_add(1, Ordering::Relaxed);
-    search_state.pv_clear(ply);
-
     let sort_quiet_moves = if depth > ONLY_CAPTURES_DEPTH as u32 {
         true
     } else {
         false
     };
-    move_ordering::sort_moves(cur, ply, sort_quiet_moves, tt_move, search_state);
+    let use_see = depth >= see::SEE_DEPTH;
+    let move_scores = move_ordering::sort_moves(
+        cur,
+        &*board,
+        ply,
+        sort_quiet_moves,
+        use_see,
+        tt_move,
+        search_state,
+    );
 
     let mut best_score = -INFINITY;
     let mut best_move = None;
@@ -275,6 +280,7 @@ pub(crate) fn negamax_ab(
                 depth: depth,
                 alpha: cur_alpha,
                 beta: beta,
+                move_score: move_scores[i],
                 ply: ply,
                 limits: limits,
                 is_in_check: is_in_check,
@@ -381,6 +387,7 @@ pub(crate) fn search_best_move(
                 match bound {
                     TTEntryBound::Exact => {
                         reconstruct_pv_from_tt(board, depth, search_state, tt, tt_move);
+
                         return SearchBestMoveResult::Ok {
                             mv: tt_move,
                             score: score,
@@ -421,13 +428,23 @@ pub(crate) fn search_best_move(
     } else {
         false
     };
-    move_ordering::sort_moves(cur, 0, sort_quiet_moves, tt_move, search_state);
+    let use_see = depth >= see::SEE_DEPTH;
+    let move_scores = move_ordering::sort_moves(
+        cur,
+        board,
+        0,
+        sort_quiet_moves,
+        use_see,
+        tt_move,
+        search_state,
+    );
 
     let negamax_limits = NegamaxLimits {
         nodes_count: limits.nodes_limit,
     };
 
     let mut best_score = -INFINITY;
+    let mut best_move = None;
 
     for (i, mv) in cur.iter().copied().enumerate() {
         let cur_alpha = alpha.max(best_score);
@@ -450,6 +467,7 @@ pub(crate) fn search_best_move(
                 depth: depth,
                 alpha: cur_alpha,
                 beta: beta,
+                move_score: move_scores[i],
                 ply: 0,
                 limits: negamax_limits,
                 is_in_check: is_in_check,
@@ -461,6 +479,7 @@ pub(crate) fn search_best_move(
 
         if score > best_score {
             best_score = score;
+            best_move = Some(mv);
 
             search_state.pv_update(0, mv);
         }
@@ -480,29 +499,21 @@ pub(crate) fn search_best_move(
     }
 
     if best_score <= alpha {
-        let best_mv = if search_state.pv_len[0] == 0 {
-            None
-        } else {
-            unsafe { Some(search_state.pv_table[0][0].assume_init_read()) }
-        };
-
         tt.store(
             board.game_state.zobrist_key,
             depth as u8,
             0,
             best_score as i16,
             TTEntryBound::FailLow,
-            best_mv,
+            best_move,
         );
+
         return SearchBestMoveResult::FailLow { score: best_score };
     }
 
-    if search_state.pv_len[0] == 0 {
-        return SearchBestMoveResult::NoMoves;
-    }
+    let best_move = best_move.unwrap();
 
-    let mv = unsafe { search_state.pv_table[0][0].assume_init_read() };
-    search_state.prev_pv_first_move = Some(mv);
+    search_state.prev_pv_first_move = Some(best_move);
 
     tt.store(
         board.game_state.zobrist_key,
@@ -510,11 +521,11 @@ pub(crate) fn search_best_move(
         0,
         best_score as i16,
         TTEntryBound::Exact,
-        Some(mv),
+        Some(best_move),
     );
 
     SearchBestMoveResult::Ok {
-        mv: mv,
+        mv: best_move,
         score: best_score,
     }
 }
@@ -579,6 +590,7 @@ struct SearchMoveArgs {
     depth: u32,
     alpha: i32,
     beta: i32,
+    move_score: i32,
     ply: u32,
     limits: NegamaxLimits,
     is_in_check: bool,
@@ -603,19 +615,26 @@ fn search_move(
         depth,
         alpha,
         beta,
+        move_score,
         ply,
         limits,
         is_in_check,
     }: SearchMoveArgs,
 ) -> SearchMoveResult {
+    let mut search_depth = depth;
+
     board.make_move(mv);
+
+    if board.is_in_check(board.game_state.side_to_move) {
+        search_depth += 1;
+    }
 
     let is_pv_move = move_index == 0;
 
     let score = if is_pv_move {
         let s = match negamax_ab(
             board,
-            depth - 1,
+            search_depth - 1,
             -beta,
             -alpha,
             ply + 1,
@@ -634,21 +653,22 @@ fn search_move(
 
         s
     } else {
-        let full_depth = depth - 1;
+        let full_depth = search_depth - 1;
         let mut reduced_depth = full_depth;
         let gives_check = board.is_in_check(board.game_state.side_to_move);
 
         if can_reduce_depth(
             mv,
+            move_score,
             move_index,
-            depth,
+            search_depth,
             is_in_check,
             gives_check,
             is_pv_move,
             search_state,
             ply,
         ) {
-            reduced_depth -= get_depth_reduction(depth);
+            reduced_depth -= get_depth_reduction(search_depth);
         }
 
         let prob_score = match negamax_ab(
@@ -703,6 +723,7 @@ fn search_move(
 
 fn can_reduce_depth(
     mv: Move,
+    move_score: i32,
     move_index: usize,
     depth: u32,
     is_in_check: bool,
@@ -713,7 +734,7 @@ fn can_reduce_depth(
 ) -> bool {
     return move_index >= FULL_DEPTH_MOVES
         && depth >= REDUCTION_DEPTH as u32
-        && mv.is_quiet()
+        && (mv.is_quiet() || (move_score < 0 && !mv.is_promo()))
         && !is_in_check
         && !is_pv_move
         && !gives_check

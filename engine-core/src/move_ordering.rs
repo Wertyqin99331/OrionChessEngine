@@ -1,4 +1,5 @@
 use crate::{
+    board::Board,
     chess_consts,
     enums::{Move, Piece},
     searching::SearchState,
@@ -19,8 +20,10 @@ const fn get_mvv_score(attacker: Piece, victim: Piece) -> u32 {
 
 pub(crate) fn score_move(
     mv: Move,
+    board: &Board,
     ply: u32,
     sort_quiet_moves: bool,
+    use_see: bool,
     tt_move: Option<Move>,
     search_state: &SearchState,
 ) -> i32 {
@@ -38,14 +41,22 @@ pub(crate) fn score_move(
     }
 
     if mv.is_capture() {
-        let (piece, captured) = match mv {
-            Move::Normal {
-                piece, captured, ..
-            } => (piece, captured.unwrap()),
-            _ => unreachable!(),
-        };
+        let base_score =
+            get_mvv_score(mv.get_moving_piece().unwrap(), mv.get_captured().unwrap()) as i32;
 
-        get_mvv_score(piece, captured) as i32 + 100_000
+        if use_see {
+            let see_score = board.see(mv);
+
+            if see_score > 0 {
+                return 100_000 + base_score + see_score;
+            } else if see_score == 0 {
+                return 50_000 + base_score + see_score;
+            } else {
+                return base_score - 100_000;
+            }
+        }
+
+        base_score + 100_000
     } else {
         if !sort_quiet_moves {
             return 0;
@@ -71,20 +82,31 @@ pub(crate) fn score_move(
 
 pub(crate) fn sort_moves(
     moves: &mut [Move],
+    board: &Board,
     ply: u32,
     sort_quiet_moves: bool,
+    use_see: bool,
     tt_move: Option<Move>,
     search_state: &SearchState,
-) {
+) -> [i32; chess_consts::MOVES_BUF_SIZE] {
+    let mut scores = [0i32; chess_consts::MOVES_BUF_SIZE];
+
     let n = moves.len();
 
     if n <= 1 {
-        return;
+        return scores;
     }
 
-    let mut scores = [0i32; chess_consts::MOVES_BUF_SIZE];
     for i in 0..n {
-        scores[i] = score_move(moves[i], ply, sort_quiet_moves, tt_move, search_state);
+        scores[i] = score_move(
+            moves[i],
+            board,
+            ply,
+            sort_quiet_moves,
+            use_see,
+            tt_move,
+            search_state,
+        );
     }
 
     for i in 1..n {
@@ -102,4 +124,6 @@ pub(crate) fn sort_moves(
         moves[j] = mv;
         scores[j] = sc;
     }
+
+    scores
 }

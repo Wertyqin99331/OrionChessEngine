@@ -36,11 +36,7 @@ impl Board {
 
                 // Remove captured piece
                 if let Some(captured_piece) = captured {
-                    let captured_piece_sq = if flags.contains(MoveFlags::EN_PASSANT) {
-                        to.backward(moving_side)
-                    } else {
-                        to
-                    };
+                    let captured_piece_sq = mv.get_captured_piece_sq(moving_side).unwrap();
 
                     self.remove_piece(opponent_side, captured_piece, captured_piece_sq);
                 }
@@ -138,7 +134,7 @@ impl Board {
                 piece,
                 captured,
                 promo,
-                flags,
+                ..
             } => {
                 let placed_piece = promo.unwrap_or(piece);
                 self.remove_piece_raw(side_that_moved, placed_piece, to);
@@ -146,11 +142,7 @@ impl Board {
                 self.add_piece_raw(side_that_moved, piece, from);
 
                 if let Some(captured_piece) = captured {
-                    let captured_sq = if flags.contains(MoveFlags::EN_PASSANT) {
-                        to.backward(side_that_moved)
-                    } else {
-                        to
-                    };
+                    let captured_sq = mv.get_captured_piece_sq(side_that_moved).unwrap();
                     self.add_piece_raw(opponent_side, captured_piece, captured_sq);
                 }
             }

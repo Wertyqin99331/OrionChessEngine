@@ -128,12 +128,28 @@ impl Board {
         unsafe { Square::from_u8_unchecked(self.get_bb(side, Piece::King).trailing_zeros() as u8) }
     }
 
+    pub(crate) fn is_square_occupied_by_side(&self, side: Side, sq: Square) -> bool {
+        sq.get_bb() & self.get_occupancy_bb(side) != 0
+    }
+
+    pub(crate) fn get_piece_type_on_square(&self, side: Side, sq: Square) -> Option<Piece> {
+        let sq_bb = sq.get_bb();
+
+        for piece in Piece::all() {
+            if self.get_bb(side, piece) & sq_bb != 0 {
+                return Some(piece);
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn get_empty_bb(&self) -> u64 {
         !self.global_occupancy
     }
 
     pub(crate) fn get_occupancy_piece(&self, side: Side, square: Square) -> Option<Piece> {
-        let square_mask = square.bit();
+        let square_mask = square.get_bb();
 
         for piece in Piece::all() {
             let piece_bb = self.get_bb(side, piece);
@@ -151,7 +167,7 @@ impl Board {
     }
 
     pub(crate) fn add_piece_raw(&mut self, side: Side, piece: Piece, square: Square) {
-        let mask = square.bit();
+        let mask = square.get_bb();
         *self.get_bb_mut(side, piece) |= mask;
         *self.get_occupancy_bb_mut(side) |= mask;
         self.global_occupancy |= mask;
@@ -164,7 +180,7 @@ impl Board {
     }
 
     pub(crate) fn remove_piece_raw(&mut self, side: Side, piece: Piece, square: Square) {
-        let mask = square.bit();
+        let mask = square.get_bb();
         *self.get_bb_mut(side, piece) &= !mask;
         *self.get_occupancy_bb_mut(side) &= !mask;
         self.global_occupancy &= !mask;
@@ -230,6 +246,14 @@ impl Board {
         self.history
             .get_repetition_count(self.game_state.zobrist_key, self.game_state.half_move_clock)
             >= 2
+    }
+
+    pub(crate) fn has_non_pawn_material(&self, side: Side) -> bool {
+        let non_pawn_bb = self.get_bb(side, Piece::Knight)
+            | self.get_bb(side, Piece::Bishop)
+            | self.get_bb(side, Piece::Rook)
+            | self.get_bb(side, Piece::Queen);
+        return non_pawn_bb != 0;
     }
 }
 

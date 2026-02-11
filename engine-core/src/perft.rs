@@ -45,7 +45,14 @@ mod tests {
     fn test_perft_initial_position() {
         test_perft(
             chess_consts::fen_strings::START_POS_FEN,
-            &[(1, 20), (2, 400), (3, 8902), (4, 197_281), (5, 4_865_609)],
+            &[
+                (1, 20),
+                (2, 400),
+                (3, 8902),
+                (4, 197_281),
+                (5, 4_865_609),
+                (6, 119_060_324),
+            ],
         );
     }
 

@@ -581,7 +581,10 @@ mod tests {
         }
 
         println!("{} with blocker on {}", Square::E4, Square::G6);
-        helpers::print_bitboard(generate_bishop_attacks_mask(Square::E4, Square::G6.bit()));
+        helpers::print_bitboard(generate_bishop_attacks_mask(
+            Square::E4,
+            Square::G6.get_bb(),
+        ));
         println!(
             "{} with blockers on {} and {}",
             Square::D4,
@@ -590,7 +593,7 @@ mod tests {
         );
         helpers::print_bitboard(generate_bishop_attacks_mask(
             Square::D4,
-            Square::B6.bit() | Square::C3.bit(),
+            Square::B6.get_bb() | Square::C3.get_bb(),
         ));
     }
 
@@ -605,7 +608,7 @@ mod tests {
         }
 
         println!("{} with blocker on {}", Square::E1, Square::G1);
-        helpers::print_bitboard(generate_rook_attacks_mask(Square::E1, Square::G1.bit()));
+        helpers::print_bitboard(generate_rook_attacks_mask(Square::E1, Square::G1.get_bb()));
 
         println!(
             "{} with blockers on {} and {}",
@@ -615,7 +618,7 @@ mod tests {
         );
         helpers::print_bitboard(generate_rook_attacks_mask(
             Square::E4,
-            Square::B4.bit() | Square::E6.bit(),
+            Square::B4.get_bb() | Square::E6.get_bb(),
         ));
     }
 
@@ -695,16 +698,16 @@ mod tests {
         init::init_engine();
 
         println!("Bishop a1 with B2 blocker");
-        helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::B2.bit()));
+        helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::B2.get_bb()));
 
         println!("Bishop a1 with C3 blocker");
-        helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::C3.bit()));
+        helpers::print_bitboard(get_bishop_attacks_mask(Square::A1, Square::C3.get_bb()));
 
         println!("Rook a1 with B1 blocker");
-        helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::B1.bit()));
+        helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::B1.get_bb()));
 
         println!("Rook a1 with C1  blocker");
-        helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::C1.bit()));
+        helpers::print_bitboard(get_rook_attacks_mask(Square::A1, Square::C1.get_bb()));
 
         println!("Rook e4 with e7, g4, d4 blockers");
         helpers::print_bitboard(get_rook_attacks_mask(
